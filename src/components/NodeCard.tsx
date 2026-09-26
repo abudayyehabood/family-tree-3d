@@ -1,7 +1,6 @@
 import { memo } from 'react'
-import type { MouseEvent } from 'react'
 import type { Gender, NodeType } from '../model'
-import { MEMBER_H, MEMBER_W, WIFE_H, WIFE_W } from '../lib/treeLayout'
+import { badgeBox, MEMBER_H, MEMBER_W, WIFE_H, WIFE_W } from '../lib/treeLayout'
 
 interface NodeCardProps {
   id: string
@@ -16,9 +15,6 @@ interface NodeCardProps {
   childCount: number
   hiddenCount: number
   selected: boolean
-  onSelect: (id: string) => void
-  onToggle: (id: string) => void
-  onEdit: (id: string) => void
 }
 
 function truncate(text: string, max: number): string {
@@ -37,19 +33,24 @@ const leafPath = (w: number, h: number) =>
 const MEMBER_LEAF = leafPath(MW, MH)
 const SELECTED_LEAF = leafPath(MW + 6, MH + 6)
 
-/** "+N" pill while collapsed (N hidden people), "−" disc while expanded. */
-function ToggleBadge({ collapsed, hiddenCount, onClick }: { collapsed: boolean; hiddenCount: number; onClick: (e: MouseEvent) => void }) {
+/**
+ * "+N" pill while collapsed (N hidden people), "−" disc while expanded.
+ * There is no listener here: the canvas resolves taps against `badgeBox` geometry, because
+ * mobile browsers retarget taps onto small clickable elements and a listener on this badge
+ * ends up stealing taps aimed at the card.
+ */
+function ToggleBadge({ type, collapsed, hiddenCount }: { type: NodeType; collapsed: boolean; hiddenCount: number }) {
   const label = collapsed ? `+${hiddenCount}` : '−'
-  const w = collapsed ? 18 + label.length * 7.5 : 22
+  const { cx, cy, hw, hh } = badgeBox(type, collapsed, hiddenCount)
   return (
-    <g className="toggle-btn" onClick={onClick} onDoubleClick={(e) => e.stopPropagation()}>
+    <g className="toggle-btn" data-toggle="1" transform={`translate(${cx},${cy})`}>
       <title>{collapsed ? `فتح الفرع (${hiddenCount} مخفي)` : 'طي الفرع'}</title>
       <rect
-        x={-w / 2}
-        y={-11}
-        width={w}
-        height={22}
-        rx={11}
+        x={-hw}
+        y={-hh}
+        width={hw * 2}
+        height={hh * 2}
+        rx={hh}
         fill={collapsed ? '#d97706' : '#fef3c7'}
         stroke={collapsed ? '#fff7e6' : '#92400e'}
         strokeWidth={2}
@@ -62,24 +63,11 @@ function ToggleBadge({ collapsed, hiddenCount, onClick }: { collapsed: boolean; 
 }
 
 function NodeCard(props: NodeCardProps) {
-  const { id, type, gender, name, generation, x, y, isRoot, collapsed, childCount, hiddenCount, selected, onSelect, onToggle, onEdit } = props
-
-  const handleSelect = (e: MouseEvent) => {
-    e.stopPropagation()
-    onSelect(id)
-  }
-  const handleEdit = (e: MouseEvent) => {
-    e.stopPropagation()
-    onEdit(id)
-  }
-  const handleToggle = (e: MouseEvent) => {
-    e.stopPropagation()
-    onToggle(id)
-  }
+  const { id, type, gender, name, generation, x, y, isRoot, collapsed, childCount, hiddenCount, selected } = props
 
   if (type === 'wife') {
     return (
-      <g className="node-card" transform={`translate(${x},${y})`} onClick={handleSelect} onDoubleClick={handleEdit}>
+      <g className="node-card" data-node-id={id} transform={`translate(${x},${y})`}>
         {selected && <rect x={-WW - 6} y={-WH - 6} width={WIFE_W + 12} height={WIFE_H + 12} rx={WH + 6} fill="#fde047" fillOpacity={0.5} stroke="#2563eb" strokeWidth={3} />}
         <rect x={-WW} y={-WH} width={WIFE_W} height={WIFE_H} rx={WH} fill="url(#cardWife)" stroke="#92400e" strokeWidth={2} />
         {/* Wedding ring with a small flower on top. */}
@@ -97,9 +85,7 @@ function NodeCard(props: NodeCardProps) {
           {truncate(name, 10)}
         </text>
         {childCount > 0 && (
-          <g transform={`translate(${-WW + 20},${-WH})`}>
-            <ToggleBadge collapsed={collapsed} hiddenCount={hiddenCount} onClick={handleToggle} />
-          </g>
+          <ToggleBadge type="wife" collapsed={collapsed} hiddenCount={hiddenCount} />
         )}
       </g>
     )
@@ -110,7 +96,7 @@ function NodeCard(props: NodeCardProps) {
   const textColor = female && !isRoot ? '#4a0f2a' : '#ffffff'
 
   return (
-    <g className="node-card" transform={`translate(${x},${y})`} onClick={handleSelect} onDoubleClick={handleEdit}>
+    <g className="node-card" data-node-id={id} transform={`translate(${x},${y})`}>
       {selected && <path d={SELECTED_LEAF} fill="#fde047" fillOpacity={0.55} stroke="#2563eb" strokeWidth={3} />}
       <path d={MEMBER_LEAF} fill={fill} stroke={isRoot ? '#f2c14e' : female ? '#be185d' : '#d9f99d'} strokeWidth={isRoot ? 3 : 2} />
       {/* Leaf vein. */}
@@ -149,9 +135,7 @@ function NodeCard(props: NodeCardProps) {
         )
       )}
       {childCount > 0 && (
-        <g transform={`translate(${-MW + 24},${-MH})`}>
-          <ToggleBadge collapsed={collapsed} hiddenCount={hiddenCount} onClick={handleToggle} />
-        </g>
+        <ToggleBadge type="member" collapsed={collapsed} hiddenCount={hiddenCount} />
       )}
     </g>
   )

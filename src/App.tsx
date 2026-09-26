@@ -201,8 +201,6 @@ export default function App() {
             onAddWife={handleAddWife}
             onAddChild={handleAddChild}
             onDelete={handleDelete}
-            onFocus={focusPerson}
-            onToggle={handleToggle}
           />
         )}
 

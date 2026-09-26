@@ -73,7 +73,7 @@ export default function SearchBar({ index, onPick }: SearchBarProps) {
   }
 
   return (
-    <div className="relative w-full max-w-sm">
+    <div className="relative min-w-0 flex-1 sm:max-w-sm">
       <Search className="pointer-events-none absolute top-1/2 right-3 size-4 -translate-y-1/2 text-amber-900/60" />
       <input
         type="search"
@@ -88,7 +88,7 @@ export default function SearchBar({ index, onPick }: SearchBarProps) {
         onFocus={() => setOpen(true)}
         onBlur={() => setOpen(false)}
         onKeyDown={onKeyDown}
-        className="h-9 w-full rounded-full border border-amber-200/40 bg-amber-50/95 pr-9 pl-8 text-sm text-stone-900 placeholder:text-stone-500 shadow-inner outline-none focus:ring-2 focus:ring-amber-400 [&::-webkit-search-cancel-button]:hidden"
+        className="h-9 w-full rounded-full border border-amber-200/40 bg-amber-50/95 pr-9 pl-8 text-base text-stone-900 sm:text-sm placeholder:text-stone-500 shadow-inner outline-none focus:ring-2 focus:ring-amber-400 [&::-webkit-search-cancel-button]:hidden"
       />
       {query && (
         <button

@@ -10,6 +10,57 @@ export const MEMBER_H = 46
 export const WIFE_W = 115
 export const WIFE_H = 38
 
+/** Collapse badge: 22 world units tall, anchored on the card's top leading corner. */
+const BADGE_H = 22
+const BADGE_MIN_W = 22
+
+/** Half-extents of a card, in world units. */
+export function cardHalf(type: NodeType): { hw: number; hh: number } {
+  return type === 'wife' ? { hw: WIFE_W / 2, hh: WIFE_H / 2 } : { hw: MEMBER_W / 2, hh: MEMBER_H / 2 }
+}
+
+/** The collapse badge's box relative to the card centre, in world units. */
+export function badgeBox(type: NodeType, collapsed: boolean, hiddenCount: number): { cx: number; cy: number; hw: number; hh: number } {
+  const label = collapsed ? `+${hiddenCount}` : '−'
+  const w = collapsed ? 18 + label.length * 7.5 : BADGE_MIN_W
+  const { hw, hh } = cardHalf(type)
+  return { cx: -hw + (type === 'wife' ? 20 : 24), cy: -hh, hw: w / 2, hh: BADGE_H / 2 }
+}
+
+/**
+ * What a tap at world point (wx, wy) hits.
+ *
+ * Done by geometry rather than by reading the event target: both Safari and Chromium apply
+ * fat-finger "touch adjustment" that silently retargets a tap onto the nearest small clickable
+ * element, and at the zoom that fits a whole tree on a phone a card is ~36px wide while its
+ * collapse badge is ~6px — so taps meant for a card were being stolen by the badge.
+ *
+ * `pad` (world units) widens the card boxes so small cards stay easy to hit; the badge is never
+ * padded, so it only wins on a deliberate hit and the card wins in every ambiguous case.
+ */
+export function hitTest(nodes: LayoutNode[], wx: number, wy: number, pad: number): { node: LayoutNode; badge: boolean } | null {
+  let best: LayoutNode | null = null
+  let bestDistance = Infinity
+  for (const n of nodes) {
+    const { hw, hh } = cardHalf(n.type)
+    const dx = Math.abs(wx - n.x)
+    const dy = Math.abs(wy - n.y)
+    if (dx > hw + pad || dy > hh + pad) continue
+    // Nearest centre wins, so padded boxes overlapping each other stay predictable.
+    const distance = (dx / (hw + pad)) ** 2 + (dy / (hh + pad)) ** 2
+    if (distance < bestDistance) {
+      bestDistance = distance
+      best = n
+    }
+  }
+  if (!best) return null
+  if (best.childCount > 0) {
+    const b = badgeBox(best.type, best.collapsed, best.hiddenCount)
+    if (Math.abs(wx - (best.x + b.cx)) <= b.hw && Math.abs(wy - (best.y + b.cy)) <= b.hh) return { node: best, badge: true }
+  }
+  return { node: best, badge: false }
+}
+
 /** Husband → wife: short branch. */
 export const WIFE_STEP = 85
 /** Mother → child: slightly longer branch. */

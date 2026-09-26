@@ -1,10 +1,10 @@
 import { memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { ReactNode, Ref } from 'react'
+import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode, Ref } from 'react'
 import { select } from 'd3-selection'
 import { zoom, zoomIdentity } from 'd3-zoom'
 import type { D3ZoomEvent, ZoomBehavior, ZoomTransform } from 'd3-zoom'
 import { Crosshair, Minus, Plus } from 'lucide-react'
-import { MEMBER_H, WIFE_H } from '../lib/treeLayout'
+import { hitTest, MEMBER_H, WIFE_H } from '../lib/treeLayout'
 import type { Box, LayoutLink, LayoutNode, TreeLayout } from '../lib/treeLayout'
 import Branch from './Branch'
 import Foliage from './Foliage'
@@ -19,6 +19,10 @@ const CULL_MARGIN = 1
 const CULL_INTERVAL_MS = 120
 /** Half-extent of the largest card (plus its foliage), for node culling. */
 const NODE_REACH = 120
+/** A press that travels further than this (CSS px) was a pan, not a tap. */
+const TAP_SLOP = 10
+/** Screen-px of forgiveness around a card, so cards stay tappable at a zoomed-out fit. */
+const TAP_PAD = 12
 
 const intersects = (a: Box, b: Box) => a.minX <= b.maxX && a.maxX >= b.minX && a.minY <= b.maxY && a.maxY >= b.minY
 
@@ -60,12 +64,9 @@ const BranchesLayer = memo(function BranchesLayer({ links }: { links: LayoutLink
 interface NodesLayerProps {
   nodes: LayoutNode[]
   selectedId: string | null
-  onSelect: (id: string) => void
-  onToggle: (id: string) => void
-  onEdit: (id: string) => void
 }
 
-const NodesLayer = memo(function NodesLayer({ nodes, selectedId, onSelect, onToggle, onEdit }: NodesLayerProps) {
+const NodesLayer = memo(function NodesLayer({ nodes, selectedId }: NodesLayerProps) {
   return (
     <g className="nodes-layer">
       {nodes.map((n) => (
@@ -83,9 +84,6 @@ const NodesLayer = memo(function NodesLayer({ nodes, selectedId, onSelect, onTog
           childCount={n.childCount}
           hiddenCount={n.hiddenCount}
           selected={n.id === selectedId}
-          onSelect={onSelect}
-          onToggle={onToggle}
-          onEdit={onEdit}
         />
       ))}
     </g>
@@ -259,7 +257,56 @@ export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onR
     moveCamera(cx, cy, t.k * factor, true, 280)
   }
 
-  const handleSelect = useCallback((id: string) => onSelect(id), [onSelect])
+  /**
+   * Taps are handled here, from raw coordinates, for two reasons that both broke iPhone:
+   * d3-zoom stops propagation of touchstart/touchend so WebKit never synthesizes a click for
+   * the cards underneath, and mobile touch adjustment retargets a tap onto the nearest small
+   * clickable element — at a whole-tree fit a card is ~36px wide and its collapse badge ~6px,
+   * so badges were swallowing taps aimed at names.
+   */
+  const tapRef = useRef<{ x: number; y: number; pointerId: number } | null>(null)
+  const tapHandledAtRef = useRef(0)
+
+  const resolveTap = useCallback(
+    (clientX: number, clientY: number) => {
+      const svg = svgRef.current
+      if (!svg) return
+      const box = svg.getBoundingClientRect()
+      const t = transformRef.current
+      const wx = (clientX - box.left - t.x) / t.k
+      const wy = (clientY - box.top - t.y) / t.k
+      const hit = hitTest(layoutRef.current.nodes, wx, wy, TAP_PAD / t.k)
+      if (!hit) onSelect(null)
+      else if (hit.badge) onToggle(hit.node.id)
+      else onSelect(hit.node.id)
+    },
+    [onSelect, onToggle],
+  )
+
+  const handlePointerDown = (event: ReactPointerEvent<SVGSVGElement>) => {
+    // A second finger means a pinch; drop the pending tap.
+    if (!event.isPrimary) return void (tapRef.current = null)
+    tapRef.current = { x: event.clientX, y: event.clientY, pointerId: event.pointerId }
+  }
+
+  const handlePointerUp = (event: ReactPointerEvent<SVGSVGElement>) => {
+    const start = tapRef.current
+    tapRef.current = null
+    // Marked handled either way, so the click fallback stays out of the way whenever
+    // pointer events work — a pan that ends on a card must not select it.
+    tapHandledAtRef.current = performance.now()
+    if (!start || start.pointerId !== event.pointerId) return
+    if (Math.abs(event.clientX - start.x) > TAP_SLOP || Math.abs(event.clientY - start.y) > TAP_SLOP) return
+    // The browser may have nudged the pointer coordinates onto a nearby target; the press
+    // position is where the finger actually landed.
+    resolveTap(start.x, start.y)
+  }
+
+  /** Fallback for anything that delivers a click without usable pointer events. */
+  const handleClick = (event: ReactMouseEvent<SVGSVGElement>) => {
+    if (performance.now() - tapHandledAtRef.current < 700) return
+    resolveTap(event.clientX, event.clientY)
+  }
 
   const handleEdit = useCallback(
     (id: string) => {
@@ -271,6 +318,15 @@ export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onR
     },
     [onSelect],
   )
+
+  const handleDoubleClick = (event: ReactMouseEvent<SVGSVGElement>) => {
+    const svg = svgRef.current
+    if (!svg) return
+    const box = svg.getBoundingClientRect()
+    const t = transformRef.current
+    const hit = hitTest(layoutRef.current.nodes, (event.clientX - box.left - t.x) / t.k, (event.clientY - box.top - t.y) / t.k, 0)
+    if (hit && !hit.badge) handleEdit(hit.node.id)
+  }
 
   useImperativeHandle(
     ref,
@@ -294,7 +350,16 @@ export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onR
 
   return (
     <div className="relative h-full w-full">
-      <svg ref={svgRef} className="tree-canvas block h-full w-full touch-none" direction="rtl" onClick={() => onSelect(null)}>
+      <svg
+        ref={svgRef}
+        className="tree-canvas block h-full w-full touch-none"
+        direction="rtl"
+        onPointerDown={handlePointerDown}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={() => (tapRef.current = null)}
+        onClick={handleClick}
+        onDoubleClick={handleDoubleClick}
+      >
         <defs>
           <linearGradient id="woodTrunk" x1="0" x2="1" y1="0" y2="0">
             <stop offset="0" stopColor="#2a1609" />
@@ -344,7 +409,7 @@ export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onR
           <Foliage nodes={visibleNodes} crown={layout.crown} />
           <Trunk scale={layout.trunkScale} />
           <BranchesLayer links={visibleLinks} />
-          <NodesLayer nodes={visibleNodes} selectedId={selectedId} onSelect={handleSelect} onToggle={onToggle} onEdit={handleEdit} />
+          <NodesLayer nodes={visibleNodes} selectedId={selectedId} />
         </g>
       </svg>
 
@@ -380,10 +445,12 @@ export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onR
         <button
           type="button"
           onClick={() => centerTree(true)}
-          className="inline-flex h-11 items-center gap-2 rounded-full bg-amber-500 px-4 text-sm font-bold text-amber-950 transition hover:bg-amber-400"
+          aria-label="توسيط الشجرة"
+          title="توسيط الشجرة"
+          className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-amber-500 px-3 text-sm font-bold text-amber-950 transition hover:bg-amber-400 sm:px-4"
         >
           <Crosshair className="size-4" />
-          توسيط الشجرة
+          <span className="hidden sm:inline">توسيط الشجرة</span>
         </button>
         <button
           type="button"
