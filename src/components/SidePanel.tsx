@@ -19,6 +19,7 @@ interface SidePanelProps {
   onDelete: (id: string) => void
 }
 
+/** A colour-coded icon square on phones; icon plus label in a two-column grid from `sm` up. */
 function ActionButton({
   children,
   onClick,
@@ -30,7 +31,7 @@ function ActionButton({
   children: ReactNode
   onClick: () => void
   disabled?: boolean
-  title?: string
+  title: string
   tone: 'green' | 'pink' | 'amber' | 'red'
   wide?: boolean
 }) {
@@ -46,8 +47,9 @@ function ActionButton({
       onClick={onClick}
       disabled={disabled}
       title={title}
-      className={`flex h-9 items-center justify-center gap-1 rounded-lg text-xs font-bold shadow-sm transition disabled:cursor-not-allowed disabled:border-stone-200 disabled:bg-stone-200 disabled:text-stone-400 sm:gap-1.5 sm:text-sm ${
-        wide ? 'col-span-2 max-sm:col-span-4' : ''
+      aria-label={title}
+      className={`grid size-7 shrink-0 place-items-center rounded-md text-sm font-bold shadow-sm transition disabled:cursor-not-allowed disabled:border-stone-200 disabled:bg-stone-200 disabled:text-stone-400 sm:flex sm:size-auto sm:h-9 sm:items-center sm:justify-center sm:gap-1.5 sm:rounded-lg ${
+        wide ? 'sm:col-span-2' : ''
       } ${tones[tone]}`}
     >
       {children}
@@ -57,8 +59,12 @@ function ActionButton({
 
 /**
  * The editing sheet for the selected person: rename, then the four actions that matter
- * (son, daughter, wife, delete). A top sheet on phones so the keyboard never covers it,
- * and a short side panel from `sm` up — it must never take over the whole screen.
+ * (son, daughter, wife, delete).
+ *
+ * On a phone it is a single 36px-tall strip across the top — name field and four icon buttons in
+ * one row — because anything taller buries the tree it is meant to edit. Extra rows (mother
+ * picker, delete confirmation) wrap underneath only when they apply. From `sm` up it becomes the
+ * familiar labelled side panel.
  */
 export default function SidePanel({ node, index, onClose, onRename, onNameMother, onAddWife, onAddChild, onDelete }: SidePanelProps) {
   const [draft, setDraft] = useState(node.name)
@@ -108,12 +114,13 @@ export default function SidePanel({ node, index, onClose, onRename, onNameMother
 
   return (
     <aside
-      className="absolute inset-x-2 top-2 z-30 flex max-h-[70vh] flex-col overflow-hidden rounded-2xl border border-amber-900/20 bg-[#fbf6ea]/97 shadow-2xl backdrop-blur sm:inset-x-auto sm:top-3 sm:right-3 sm:w-80"
+      className="absolute inset-x-1 top-1 z-30 flex flex-col overflow-hidden rounded-lg border border-amber-900/20 bg-[#fbf6ea]/97 shadow-2xl backdrop-blur sm:inset-x-auto sm:top-3 sm:right-3 sm:max-h-[70vh] sm:w-80 sm:rounded-2xl"
       onClick={(e) => e.stopPropagation()}
     >
-      <div className="flex items-center gap-2 border-b border-amber-900/10 bg-amber-100/60 px-2 py-1 sm:px-3 sm:py-2">
-        <span className={`grid size-6 shrink-0 place-items-center rounded-md sm:size-8 sm:rounded-lg ${iconTone}`}>
-          <Icon className="size-3.5 sm:size-4" />
+      {/* The name field doubles as the title on a phone, so this header is desktop-only. */}
+      <div className="hidden items-center gap-2 border-b border-amber-900/10 bg-amber-100/60 px-3 py-2 sm:flex">
+        <span className={`grid size-8 shrink-0 place-items-center rounded-lg ${iconTone}`}>
+          <Icon className="size-4" />
         </span>
         <p className="min-w-0 flex-1 truncate text-sm font-extrabold text-stone-900">{node.name}</p>
         <button type="button" onClick={onClose} aria-label="إغلاق" className="rounded-lg p-1 text-stone-500 hover:bg-amber-200/60">
@@ -121,9 +128,9 @@ export default function SidePanel({ node, index, onClose, onRename, onNameMother
         </button>
       </div>
 
-      <div className="flex-1 space-y-1.5 overflow-y-auto p-2 sm:space-y-2 sm:p-3">
+      <div className="flex flex-wrap items-center gap-1 overflow-y-auto p-1 sm:flex-col sm:flex-nowrap sm:items-stretch sm:gap-2 sm:p-3">
         <form
-          className="flex gap-1.5"
+          className="flex min-w-0 flex-1 gap-1 sm:w-full sm:flex-none sm:gap-1.5"
           onSubmit={(e) => {
             e.preventDefault()
             saveName()
@@ -136,26 +143,27 @@ export default function SidePanel({ node, index, onClose, onRename, onNameMother
             autoComplete="off"
             onChange={(e) => setDraft(e.target.value)}
             onFocus={(e) => e.target.select()}
-            className="h-9 min-w-0 flex-1 rounded-lg border-2 border-green-700/40 bg-white px-2.5 text-base font-extrabold text-stone-900 outline-none focus:border-green-600 focus:ring-2 focus:ring-green-300 sm:h-10 sm:px-3"
+            className="h-7 min-w-0 flex-1 rounded-md border-2 border-green-700/40 bg-white px-1.5 text-base leading-none font-extrabold text-stone-900 outline-none focus:border-green-600 focus:ring-2 focus:ring-green-300 sm:h-10 sm:rounded-lg sm:px-3"
           />
           <button
             type="submit"
             disabled={!trimmed || !dirty}
             aria-label="حفظ الاسم"
             title="حفظ الاسم"
-            className="grid size-9 shrink-0 place-items-center rounded-lg bg-green-700 text-white shadow transition hover:bg-green-600 disabled:bg-stone-200 disabled:text-stone-400 sm:size-10"
+            className="grid size-7 shrink-0 place-items-center rounded-md bg-green-700 text-white shadow transition hover:bg-green-600 disabled:bg-stone-200 disabled:text-stone-400 sm:size-10 sm:rounded-lg"
           >
-            {dirty || !trimmed ? <Save className="size-4" /> : <Check className="size-4" />}
+            {dirty || !trimmed ? <Save className="size-3.5 sm:size-4" /> : <Check className="size-3.5 sm:size-4" />}
           </button>
         </form>
 
+        {/* The picker is pushed below the action row on a phone; on desktop it keeps its place in the column. */}
         {showMotherPicker && (
-          <label className="flex items-center gap-2 text-xs text-stone-600">
+          <label className="order-last flex basis-full items-center gap-2 text-xs text-stone-600 sm:order-none sm:basis-auto">
             الأم
             <select
               value={mother?.id ?? UNKNOWN}
               onChange={(e) => setMotherId(e.target.value)}
-              className="h-8 min-w-0 flex-1 rounded-lg border border-amber-900/25 bg-white px-2 text-sm font-bold text-stone-900 outline-none focus:ring-2 focus:ring-green-300"
+              className="h-7 min-w-0 flex-1 rounded-md border border-amber-900/25 bg-white px-1.5 text-sm font-bold text-stone-900 outline-none focus:ring-2 focus:ring-green-300 sm:h-8 sm:rounded-lg sm:px-2"
             >
               {mothers.map((m) => (
                 <option key={m.id} value={m.id}>
@@ -167,7 +175,7 @@ export default function SidePanel({ node, index, onClose, onRename, onNameMother
           </label>
         )}
 
-        <div className="grid grid-cols-4 gap-1 sm:grid-cols-2 sm:gap-1.5">
+        <div className="flex shrink-0 items-center gap-1 sm:grid sm:w-full sm:grid-cols-2 sm:gap-1.5">
           <ActionButton
             tone="green"
             onClick={() => childParentId && onAddChild(childParentId, 'male')}
@@ -175,7 +183,7 @@ export default function SidePanel({ node, index, onClose, onRename, onNameMother
             title={childHint ?? 'إضافة ابن'}
           >
             <UserPlus className="size-3.5 sm:size-4" />
-            ابن
+            <span className="hidden sm:inline">ابن</span>
           </ActionButton>
           <ActionButton
             tone="pink"
@@ -184,7 +192,7 @@ export default function SidePanel({ node, index, onClose, onRename, onNameMother
             title={childHint ?? 'إضافة بنت'}
           >
             <Baby className="size-3.5 sm:size-4" />
-            بنت
+            <span className="hidden sm:inline">بنت</span>
           </ActionButton>
           {isMale && (
             <ActionButton
@@ -194,33 +202,40 @@ export default function SidePanel({ node, index, onClose, onRename, onNameMother
               title={wives >= MAX_WIVES ? `الحد الأقصى ${MAX_WIVES} زوجات` : 'إضافة زوجة'}
             >
               <Heart className="size-3.5 sm:size-4" />
-              زوجة
+              <span className="hidden sm:inline">زوجة</span>
             </ActionButton>
           )}
-          <ActionButton
-            tone="red"
-            wide={!isMale}
-            onClick={() => setConfirmDelete(true)}
-            disabled={isRoot}
-            title={isRoot ? 'لا يمكن حذف المؤسس' : 'حذف'}
-          >
+          <ActionButton tone="red" wide={!isMale} onClick={() => setConfirmDelete(true)} disabled={isRoot} title={isRoot ? 'لا يمكن حذف المؤسس' : 'حذف'}>
             <Trash2 className="size-3.5 sm:size-4" />
-            حذف
+            <span className="hidden sm:inline">حذف</span>
           </ActionButton>
         </div>
 
-        {childHint && <p className="rounded-lg bg-amber-100 px-2.5 py-1.5 text-xs text-amber-900">{childHint}</p>}
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="إغلاق"
+          className="grid size-7 shrink-0 place-items-center rounded-md text-stone-500 hover:bg-amber-200/60 sm:hidden"
+        >
+          <X className="size-4" />
+        </button>
+
+        {childHint && <p className="basis-full rounded-md bg-amber-100 px-2 py-1 text-xs text-amber-900 sm:basis-auto">{childHint}</p>}
 
         {confirmDelete && !isRoot && (
-          <div className="space-y-1.5 rounded-lg border border-red-200 bg-red-50/70 p-2">
+          <div className="basis-full space-y-1 rounded-md border border-red-200 bg-red-50/70 p-1.5 sm:basis-auto sm:space-y-1.5 sm:p-2">
             <p className="text-xs text-red-800">
               حذف «{node.name}»{descendants > 0 ? ` مع ${descendants} من الذرية` : ''}؟ لا يمكن التراجع.
             </p>
             <div className="grid grid-cols-2 gap-1.5">
-              <button type="button" onClick={() => onDelete(node.id)} className="h-9 rounded-lg bg-red-700 text-sm font-bold text-white hover:bg-red-600">
+              <button type="button" onClick={() => onDelete(node.id)} className="h-7 rounded-md bg-red-700 text-xs font-bold text-white hover:bg-red-600 sm:h-9 sm:text-sm">
                 تأكيد
               </button>
-              <button type="button" onClick={() => setConfirmDelete(false)} className="h-9 rounded-lg border border-stone-300 bg-white text-sm font-semibold hover:bg-stone-50">
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(false)}
+                className="h-7 rounded-md border border-stone-300 bg-white text-xs font-semibold hover:bg-stone-50 sm:h-9 sm:text-sm"
+              >
                 إلغاء
               </button>
             </div>
@@ -229,7 +244,7 @@ export default function SidePanel({ node, index, onClose, onRename, onNameMother
 
         {unknownMother && (
           <form
-            className="flex gap-1.5"
+            className="flex basis-full gap-1 sm:basis-auto sm:gap-1.5"
             onSubmit={(e) => {
               e.preventDefault()
               if (motherName.trim()) onNameMother(node.id, motherName.trim())
@@ -242,13 +257,13 @@ export default function SidePanel({ node, index, onClose, onRename, onNameMother
               autoComplete="off"
               onChange={(e) => setMotherName(e.target.value)}
               placeholder={`اسم أم الأبناء (${unknownMother.children.length})`}
-              className="h-9 min-w-0 flex-1 rounded-lg border border-amber-900/25 bg-white px-2 text-base font-bold outline-none focus:ring-2 focus:ring-green-300"
+              className="h-7 min-w-0 flex-1 rounded-md border border-amber-900/25 bg-white px-1.5 text-base leading-none font-bold outline-none focus:ring-2 focus:ring-green-300 sm:h-9 sm:rounded-lg sm:px-2"
             />
             <button
               type="submit"
               disabled={!motherName.trim() || wives >= MAX_WIVES}
               title={wives >= MAX_WIVES ? `الحد الأقصى ${MAX_WIVES} زوجات` : undefined}
-              className="h-9 shrink-0 rounded-lg bg-amber-500 px-3 text-xs font-bold text-amber-950 hover:bg-amber-400 disabled:bg-stone-200 disabled:text-stone-400"
+              className="h-7 shrink-0 rounded-md bg-amber-500 px-2 text-xs font-bold text-amber-950 hover:bg-amber-400 disabled:bg-stone-200 disabled:text-stone-400 sm:h-9 sm:rounded-lg sm:px-3"
             >
               حفظ
             </button>

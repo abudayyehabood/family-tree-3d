@@ -441,15 +441,16 @@ export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onR
         />
       )}
 
-      <div className="absolute bottom-2 left-2 z-20 flex items-center gap-1 rounded-full bg-[#3b2412]/95 p-1 shadow-xl sm:bottom-4 sm:left-4 sm:gap-2 sm:p-1.5">
+      {/* Camera bar: a thumbnail-sized strip on phones, a full control bar from `sm` up. */}
+      <div className="absolute bottom-1 left-1 z-20 flex items-center gap-px rounded-full bg-[#3b2412]/95 p-px shadow-xl sm:bottom-4 sm:left-4 sm:gap-2 sm:p-1.5">
         <button
           type="button"
           onClick={() => centerTree(true)}
           aria-label="توسيط الشجرة"
           title="توسيط الشجرة"
-          className="inline-flex h-8 items-center justify-center gap-2 rounded-full bg-amber-500 px-2.5 text-sm font-bold text-amber-950 transition hover:bg-amber-400 sm:h-11 sm:px-4"
+          className="inline-flex size-6 items-center justify-center gap-2 rounded-full bg-amber-500 font-bold text-amber-950 transition hover:bg-amber-400 sm:h-11 sm:w-auto sm:px-4 sm:text-sm"
         >
-          <Crosshair className="size-4" />
+          <Crosshair className="size-3 sm:size-4" />
           <span className="hidden sm:inline">توسيط الشجرة</span>
         </button>
         <button
@@ -457,11 +458,11 @@ export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onR
           aria-label="تكبير"
           title="تكبير"
           onClick={() => zoomBy(ZOOM_STEP)}
-          className="grid size-8 place-items-center rounded-full bg-white/10 text-amber-50 transition hover:bg-white/25 sm:size-11"
+          className="grid size-6 place-items-center rounded-full bg-white/10 text-amber-50 transition hover:bg-white/25 sm:size-11"
         >
-          <Plus className="size-4 sm:size-6" strokeWidth={3} />
+          <Plus className="size-3 sm:size-6" strokeWidth={3} />
         </button>
-        <span className="w-10 text-center text-xs font-bold text-amber-50 tabular-nums sm:w-14 sm:text-sm" dir="ltr">
+        <span className="w-7 text-center text-[10px] font-bold text-amber-50 tabular-nums sm:w-14 sm:text-sm" dir="ltr">
           {zoomPercent}%
         </span>
         <button
@@ -469,9 +470,9 @@ export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onR
           aria-label="تصغير"
           title="تصغير"
           onClick={() => zoomBy(1 / ZOOM_STEP)}
-          className="grid size-8 place-items-center rounded-full bg-white/10 text-amber-50 transition hover:bg-white/25 sm:size-11"
+          className="grid size-6 place-items-center rounded-full bg-white/10 text-amber-50 transition hover:bg-white/25 sm:size-11"
         >
-          <Minus className="size-4 sm:size-6" strokeWidth={3} />
+          <Minus className="size-3 sm:size-6" strokeWidth={3} />
         </button>
       </div>
     </div>

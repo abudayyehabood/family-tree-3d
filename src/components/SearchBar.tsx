@@ -88,7 +88,7 @@ export default function SearchBar({ index, onPick }: SearchBarProps) {
         onFocus={() => setOpen(true)}
         onBlur={() => setOpen(false)}
         onKeyDown={onKeyDown}
-        className="h-7 w-full rounded-full border border-amber-200/40 bg-amber-50/95 pr-7 pl-7 text-base text-stone-900 sm:h-9 sm:pr-9 sm:pl-8 sm:text-sm placeholder:text-stone-500 shadow-inner outline-none focus:ring-2 focus:ring-amber-400 [&::-webkit-search-cancel-button]:hidden"
+        className="h-8 w-full rounded-full border border-amber-200/40 bg-amber-50/95 pr-7 pl-7 text-base text-stone-900 shadow-lg sm:h-9 sm:pr-9 sm:pl-8 sm:text-sm sm:shadow-inner placeholder:text-stone-500 outline-none focus:ring-2 focus:ring-amber-400 [&::-webkit-search-cancel-button]:hidden"
       />
       {query && (
         <button
