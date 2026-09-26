@@ -5,6 +5,7 @@ import { computeLayout } from './lib/treeLayout'
 import { exportTree, importTreeFile, loadTree, saveTree } from './lib/storage'
 import {
   addChild,
+  addChildToHusband,
   addWife,
   ancestorIds,
   buildIndex,
@@ -50,6 +51,7 @@ export default function App() {
   const index = useMemo(() => buildIndex(root), [root])
   const layout = useMemo(() => computeLayout(root, index), [root, index])
   const generations = useMemo(() => maxGeneration(index), [index])
+  const people = useMemo(() => [...index.values()].filter((e) => !e.node.unknown).length, [index])
   const selectedNode = selectedId ? index.get(selectedId)?.node : undefined
 
   useEffect(() => {
@@ -116,8 +118,12 @@ export default function App() {
     setSelectedId(result.id)
   }
 
-  const handleAddChild = (wifeId: string, gender: Gender) => {
-    const result = addChild(root, wifeId, gender, gender === 'male' ? 'ابن جديد' : 'بنت جديدة')
+  /** `parentId` is a wife, or a man (the child then goes under his unknown-mother knot). */
+  const handleAddChild = (parentId: string, gender: Gender) => {
+    const name = gender === 'male' ? 'ابن جديد' : 'بنت جديدة'
+    const parent = index.get(parentId)?.node
+    const result =
+      parent?.type === 'member' ? addChildToHusband(root, parentId, gender, name) : addChild(root, parentId, gender, name)
     if (!result) return notify('تم بلوغ الحد الأقصى للأجيال (15)', true)
     setRoot(result.root)
     setSelectedId(result.id)
@@ -199,7 +205,7 @@ export default function App() {
         )}
 
         <div className="pointer-events-none absolute bottom-5 left-1/2 z-10 -translate-x-1/2 rounded-full bg-white/80 px-4 py-1.5 text-xs font-semibold whitespace-nowrap text-stone-700 shadow backdrop-blur">
-          {index.size} شخص · {generations} {generations > 10 || generations < 3 ? 'جيل' : 'أجيال'} · حفظ تلقائي
+          {people} شخص · {generations} {generations > 10 || generations < 3 ? 'جيل' : 'أجيال'} · حفظ تلقائي
         </div>
 
         {toast && (

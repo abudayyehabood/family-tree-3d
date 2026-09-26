@@ -5,13 +5,15 @@ import { MAX_GENERATION, MAX_WIVES } from '../model'
 import type { Gender, TreeNode } from '../model'
 import type { TreeIndex } from '../lib/tree'
 
+const UNKNOWN = '__unknown__'
+
 interface SidePanelProps {
   node: TreeNode
   index: TreeIndex
   onClose: () => void
   onRename: (id: string, name: string) => void
   onAddWife: (husbandId: string) => void
-  onAddChild: (wifeId: string, gender: Gender) => void
+  onAddChild: (parentId: string, gender: Gender) => void
   onDelete: (id: string) => void
   onFocus: (id: string) => void
   onToggle: (id: string) => void
@@ -73,19 +75,22 @@ export default function SidePanel({ node, index, onClose, onRename, onAddWife, o
   const daughters = isWife ? node.children.length - sons : 0
   const atGenerationLimit = node.generation >= MAX_GENERATION
   const [motherId, setMotherId] = useState<string | null>(null)
-  /** Children always hang under a wife: the wife herself, or one of the husband's wives. */
+  /** Children hang under a wife: the wife herself, or one of the husband's wives. */
   const mothers = isWife ? [node] : isMale ? node.children : []
-  const mother = mothers.find((m) => m.id === motherId) ?? mothers[0]
-  const canAddChildren = !!mother && !atGenerationLimit
+  /** A man can also get children with no named mother; they go under an unknown-mother knot. */
+  const offerUnknown = isMale && !mothers.some((m) => m.unknown) && wives < MAX_WIVES
+  const mother = motherId === UNKNOWN ? undefined : (mothers.find((m) => m.id === motherId) ?? mothers[0])
+  const childParentId = mother ? mother.id : offerUnknown ? node.id : undefined
+  const canAddChildren = !!childParentId && !atGenerationLimit
   const childHint = atGenerationLimit
     ? `تم بلوغ الحد الأقصى للأجيال (${MAX_GENERATION})، لا يمكن إضافة أبناء.`
     : node.type === 'member' && node.gender === 'female'
       ? 'الأنثى نهاية الفرع في هذه الشجرة؛ يُضاف الأبناء تحت الأم (الزوجة).'
       : isMale && !mother
-        ? 'أضف زوجة أولاً، ثم أضف الأبناء تحتها.'
+        ? 'الأم غير معروفة: سيظهر الأبناء تحت عقدة «؟»، ويمكنك كتابة اسم الأم لاحقاً.'
         : null
 
-  const title = isRoot ? 'المؤسس' : isWife ? 'زوجة' : node.gender === 'male' ? 'فرد من العائلة · ذكر' : 'فرد من العائلة · أنثى'
+  const title = isRoot ? 'المؤسس' : node.unknown ? 'أم غير معروفة (اكتب اسمها إن عرفته)' : isWife ? 'زوجة' : node.gender === 'male' ? 'فرد من العائلة · ذكر' : 'فرد من العائلة · أنثى'
   const Icon = isRoot ? Crown : isWife ? Heart : User
   const iconTone = isRoot ? 'bg-amber-800 text-amber-100' : isWife ? 'bg-amber-400 text-amber-950' : isMale ? 'bg-green-700 text-white' : 'bg-pink-700 text-white'
 
@@ -165,11 +170,11 @@ export default function SidePanel({ node, index, onClose, onRename, onAddWife, o
           )}
           <div className="space-y-2 rounded-xl border border-green-800/15 bg-green-50/60 p-3">
             <p className="text-sm font-bold text-stone-800">إضافة الأبناء</p>
-            {isMale && mothers.length > 0 && (
+            {isMale && (mothers.length > 0 || offerUnknown) && (
               <label className="block text-xs text-stone-600">
                 الأم
                 <select
-                  value={mother?.id}
+                  value={mother?.id ?? UNKNOWN}
                   onChange={(e) => setMotherId(e.target.value)}
                   className="mt-1 h-10 w-full rounded-lg border border-amber-900/25 bg-white px-2 text-sm font-bold text-stone-900 outline-none focus:ring-2 focus:ring-green-300"
                 >
@@ -178,15 +183,16 @@ export default function SidePanel({ node, index, onClose, onRename, onAddWife, o
                       {m.name}
                     </option>
                   ))}
+                  {offerUnknown && <option value={UNKNOWN}>غير معروفة (بدون اسم)</option>}
                 </select>
               </label>
             )}
             <div className="grid grid-cols-2 gap-2">
-              <ActionButton tone="green" onClick={() => mother && onAddChild(mother.id, 'male')} disabled={!canAddChildren}>
+              <ActionButton tone="green" onClick={() => childParentId && onAddChild(childParentId, 'male')} disabled={!canAddChildren}>
                 <UserPlus className="size-4" />
                 إضافة ابن (ذكر)
               </ActionButton>
-              <ActionButton tone="pink" onClick={() => mother && onAddChild(mother.id, 'female')} disabled={!canAddChildren}>
+              <ActionButton tone="pink" onClick={() => childParentId && onAddChild(childParentId, 'female')} disabled={!canAddChildren}>
                 <Baby className="size-4" />
                 إضافة بنت (أنثى)
               </ActionButton>

@@ -8,7 +8,7 @@ interface NodeActionsProps {
   isRoot: boolean
   onEditName: (id: string) => void
   onAddWife: (husbandId: string) => void
-  onAddChild: (wifeId: string, gender: Gender) => void
+  onAddChild: (parentId: string, gender: Gender) => void
   onDelete: (id: string) => void
 }
 
@@ -42,22 +42,27 @@ function ActionChip({
 export default function NodeActions({ node, isRoot, onEditName, onAddWife, onAddChild, onDelete }: NodeActionsProps) {
   const isWife = node.type === 'wife'
   const isMale = node.type === 'member' && node.gender === 'male'
-  // Children hang under a wife: the wife herself, or the husband's first wife.
-  const mother = isWife ? node : isMale ? node.children[0] : undefined
-  const childBlocked = !mother || node.generation >= MAX_GENERATION
-  const childHint = !mother
-    ? isMale
-      ? 'أضف زوجة أولاً'
-      : 'الأنثى نهاية الفرع؛ يُضاف الأبناء تحت الأم'
+  // Children go under the wife herself, the husband's first wife, or (no wife yet) straight under
+  // the man, where an unknown-mother knot is created for them.
+  const target = isWife ? node : isMale ? (node.children[0] ?? node) : undefined
+  const childBlocked = !target || node.generation >= MAX_GENERATION
+  const childHint = !target
+    ? 'الأنثى نهاية الفرع؛ يُضاف الأبناء تحت الأم'
     : node.generation >= MAX_GENERATION
       ? `الحد الأقصى ${MAX_GENERATION} جيلاً`
-      : ''
+      : isMale && !node.children.length
+        ? 'الأم غير معروفة؛ يمكنك كتابة اسمها لاحقاً'
+        : ''
 
   return (
     <div className="flex flex-wrap items-center justify-center gap-1.5 rounded-2xl border border-amber-900/20 bg-[#fbf6ea]/95 p-1.5 shadow-xl backdrop-blur">
-      <ActionChip label="تعديل الاسم" onClick={() => onEditName(node.id)} tone="bg-[#4a2c16] text-amber-50 hover:bg-[#5c371b]">
+      <ActionChip
+        label={node.unknown ? 'كتابة اسم الأم' : 'تعديل الاسم'}
+        onClick={() => onEditName(node.id)}
+        tone="bg-[#4a2c16] text-amber-50 hover:bg-[#5c371b]"
+      >
         <Pencil className="size-3.5" />
-        تعديل
+        {node.unknown ? 'اسم الأم' : 'تعديل'}
       </ActionChip>
       {isMale && (
         <ActionChip
@@ -71,8 +76,8 @@ export default function NodeActions({ node, isRoot, onEditName, onAddWife, onAdd
         </ActionChip>
       )}
       <ActionChip
-        label={childHint || 'إضافة ابن'}
-        onClick={() => mother && onAddChild(mother.id, 'male')}
+        label={childHint ? `إضافة ابن · ${childHint}` : 'إضافة ابن'}
+        onClick={() => target && onAddChild(target.id, 'male')}
         disabled={childBlocked}
         tone="bg-green-700 text-white hover:bg-green-600"
       >
@@ -80,8 +85,8 @@ export default function NodeActions({ node, isRoot, onEditName, onAddWife, onAdd
         ابن
       </ActionChip>
       <ActionChip
-        label={childHint || 'إضافة بنت'}
-        onClick={() => mother && onAddChild(mother.id, 'female')}
+        label={childHint ? `إضافة بنت · ${childHint}` : 'إضافة بنت'}
+        onClick={() => target && onAddChild(target.id, 'female')}
         disabled={childBlocked}
         tone="bg-pink-700 text-white hover:bg-pink-600"
       >

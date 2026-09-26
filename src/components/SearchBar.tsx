@@ -25,7 +25,8 @@ function describe(index: TreeIndex, node: TreeNode): string {
   if (!parentNode) return 'المؤسس · الجيل 1'
   const fatherId = index.get(parentNode.id)?.parentId
   const father = fatherId ? index.get(fatherId)?.node : undefined
-  return `${node.gender === 'male' ? 'ابن' : 'بنت'} ${father?.name ?? ''} و${parentNode.name} · الجيل ${node.generation}`
+  const mother = parentNode.unknown ? '' : ` و${parentNode.name}`
+  return `${node.gender === 'male' ? 'ابن' : 'بنت'} ${father?.name ?? ''}${mother} · الجيل ${node.generation}`
 }
 
 export default function SearchBar({ index, onPick }: SearchBarProps) {
@@ -35,7 +36,7 @@ export default function SearchBar({ index, onPick }: SearchBarProps) {
 
   const entries = useMemo<SearchEntry[]>(() => {
     const list: SearchEntry[] = []
-    for (const { node } of index.values()) list.push({ node, norm: normalizeArabic(node.name), subtitle: describe(index, node) })
+    for (const { node } of index.values()) if (!node.unknown) list.push({ node, norm: normalizeArabic(node.name), subtitle: describe(index, node) })
     return list
   }, [index])
 

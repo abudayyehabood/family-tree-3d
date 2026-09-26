@@ -51,6 +51,8 @@ export interface LayoutNode {
   childCount: number
   /** People hidden under this node while it is collapsed (0 when expanded). */
   hiddenCount: number
+  /** Unknown-mother placeholder, drawn as a small knot. */
+  unknown: boolean
 }
 
 export interface Box {
@@ -100,8 +102,9 @@ export function branchThickness(generation: number): number {
   return Math.max(3, 26 * Math.pow(0.8, generation - 1))
 }
 
-const cardW = (n: TreeNode) => (n.type === 'wife' ? WIFE_W : MEMBER_W)
-const cardH = (n: TreeNode) => (n.type === 'wife' ? WIFE_H : MEMBER_H)
+export const KNOT_SIZE = 34
+const cardW = (n: TreeNode) => (n.unknown ? KNOT_SIZE : n.type === 'wife' ? WIFE_W : MEMBER_W)
+const cardH = (n: TreeNode) => (n.unknown ? KNOT_SIZE : n.type === 'wife' ? WIFE_H : MEMBER_H)
 
 function collides(a: Polar, b: Polar): boolean {
   return Math.abs(a.x - b.x) < (a.w + b.w) / 2 + PAD_X && Math.abs(a.y - b.y) < (a.h + b.h) / 2 + PAD_Y
@@ -246,6 +249,7 @@ export function computeLayout(data: TreeNode, index: TreeIndex): TreeLayout {
       collapsed,
       childCount: d.children.length,
       hiddenCount: collapsed ? (index.get(d.id)?.descendants ?? 0) : 0,
+      unknown: !!d.unknown,
     }
     nodes.push(node)
     byId.set(d.id, node)
@@ -266,7 +270,7 @@ export function computeLayout(data: TreeNode, index: TreeIndex): TreeLayout {
     const c1: Point = [P[0] + parentDir[0] * dr * 0.5, P[1] + parentDir[1] * dr * 0.5]
     const c2: Point = [C[0] - childDir[0] * dr * 0.45, C[1] - childDir[1] * dr * 0.45]
 
-    const isWifeBranch = d.type === 'wife'
+    const isWifeBranch = d.type === 'wife' && !d.unknown
     const parentGen = n.parent.data.generation
     const base = branchThickness(parentGen)
     let w0 = isWifeBranch ? base : base * 0.8

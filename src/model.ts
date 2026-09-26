@@ -10,8 +10,12 @@ export interface TreeNode {
   /** A wife shares her husband's generation. */
   generation: number
   collapsed?: boolean
+  /** Placeholder wife for children whose mother's name is not known; drawn as a small knot. */
+  unknown?: boolean
   children: TreeNode[]
 }
 
 export const MAX_GENERATION = 15
 export const MAX_WIVES = 4
+
+export const UNKNOWN_MOTHER_NAME = 'غير معروفة'

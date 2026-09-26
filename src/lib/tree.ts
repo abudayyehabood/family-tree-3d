@@ -1,4 +1,4 @@
-import { MAX_GENERATION, MAX_WIVES } from '../model'
+import { MAX_GENERATION, MAX_WIVES, UNKNOWN_MOTHER_NAME } from '../model'
 import type { Gender, TreeNode } from '../model'
 
 let idCounter = 0
@@ -26,7 +26,8 @@ export function buildIndex(root: TreeNode): TreeIndex {
     const entry: IndexEntry = { node, parentId, descendants: 0 }
     index.set(node.id, entry)
     let count = 0
-    for (const child of node.children) count += 1 + visit(child, node.id)
+    // Unknown-mother placeholders are not people, so they are not counted.
+    for (const child of node.children) count += (child.unknown ? 0 : 1) + visit(child, node.id)
     entry.descendants = count
     return count
   }
@@ -60,7 +61,8 @@ export function updateNode(root: TreeNode, id: string, fn: (node: TreeNode) => T
 }
 
 export function renameNode(root: TreeNode, id: string, name: string): TreeNode {
-  return updateNode(root, id, (node) => ({ ...node, name }))
+  // Naming an unknown mother turns her into a regular wife.
+  return updateNode(root, id, (node) => (node.name === name ? node : { ...node, name, unknown: undefined }))
 }
 
 export function toggleCollapse(root: TreeNode, id: string): TreeNode {
@@ -119,6 +121,35 @@ export function addChild(
     }
     createdId = child.id
     return { ...wife, collapsed: false, children: [...wife.children, child] }
+  })
+  return createdId ? { root: next, id: createdId } : null
+}
+
+/**
+ * Adds a child to a man directly. The child hangs under his unknown-mother placeholder, which is
+ * created on first use, so the "children hang under a wife" rule still holds.
+ */
+export function addChildToHusband(
+  root: TreeNode,
+  husbandId: string,
+  gender: Gender,
+  name: string,
+): { root: TreeNode; id: string } | null {
+  let createdId: string | null = null
+  const next = updateNode(root, husbandId, (husband) => {
+    if (husband.type !== 'member' || husband.gender !== 'male' || husband.generation >= MAX_GENERATION) return husband
+    let mother = husband.children.find((w) => w.unknown)
+    if (!mother) {
+      if (husband.children.length >= MAX_WIVES) return husband
+      mother = { id: newId(), type: 'wife', name: UNKNOWN_MOTHER_NAME, gender: 'female', generation: husband.generation, unknown: true, children: [] }
+    }
+    const child: TreeNode = { id: newId(), type: 'member', name, gender, generation: husband.generation + 1, children: [] }
+    createdId = child.id
+    const updated = { ...mother, collapsed: false, children: [...mother.children, child] }
+    const wives = husband.children.includes(mother)
+      ? husband.children.map((w) => (w === mother ? updated : w))
+      : [...husband.children, updated]
+    return { ...husband, collapsed: false, children: wives }
   })
   return createdId ? { root: next, id: createdId } : null
 }
@@ -184,6 +215,7 @@ export function validateTree(input: unknown): TreeNode {
       gender,
       generation: expectedGen,
       collapsed: r.collapsed === true && children.length > 0 ? true : undefined,
+      unknown: expectedType === 'wife' && r.unknown === true ? true : undefined,
       children,
     }
   }
