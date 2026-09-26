@@ -1,0 +1,17 @@
+export type NodeType = 'member' | 'wife'
+export type Gender = 'male' | 'female'
+
+export interface TreeNode {
+  id: string
+  type: NodeType
+  name: string
+  /** Wives are always 'female'. */
+  gender: Gender
+  /** A wife shares her husband's generation. */
+  generation: number
+  collapsed?: boolean
+  children: TreeNode[]
+}
+
+export const MAX_GENERATION = 15
+export const MAX_WIVES = 4
