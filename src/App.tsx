@@ -16,6 +16,7 @@ import {
   toggleCollapse,
 } from './lib/tree'
 import ConfirmDialog from './components/ConfirmDialog'
+import NodeActions from './components/NodeActions'
 import SidePanel from './components/SidePanel'
 import Toolbar from './components/Toolbar'
 import TreeCanvas from './components/TreeCanvas'
@@ -161,6 +162,25 @@ export default function App() {
           onSelect={setSelectedId}
           onToggle={handleToggle}
           onRename={handleRename}
+          actions={
+            selectedNode && (
+              <NodeActions
+                node={selectedNode}
+                isRoot={selectedNode.id === root.id}
+                onEditName={(id) => canvasRef.current?.editName(id)}
+                onAddWife={handleAddWife}
+                onAddChild={handleAddChild}
+                onDelete={(id) =>
+                  setConfirm({
+                    message: `سيتم حذف «${index.get(id)?.node.name}»${
+                      index.get(id)?.descendants ? ` مع ${index.get(id)?.descendants} من الذرية` : ''
+                    }. لا يمكن التراجع.`,
+                    action: () => handleDelete(id),
+                  })
+                }
+              />
+            )
+          }
         />
 
         {selectedNode && (

@@ -1,9 +1,10 @@
 import { memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { Ref } from 'react'
+import type { ReactNode, Ref } from 'react'
 import { select } from 'd3-selection'
 import { zoom, zoomIdentity } from 'd3-zoom'
 import type { D3ZoomEvent, ZoomBehavior, ZoomTransform } from 'd3-zoom'
 import { Crosshair, Minus, Plus } from 'lucide-react'
+import { MEMBER_H, WIFE_H } from '../lib/treeLayout'
 import type { Box, LayoutLink, LayoutNode, TreeLayout } from '../lib/treeLayout'
 import Branch from './Branch'
 import Foliage from './Foliage'
@@ -24,6 +25,8 @@ const intersects = (a: Box, b: Box) => a.minX <= b.maxX && a.maxX >= b.minX && a
 export interface TreeCanvasHandle {
   centerTree: (animate?: boolean) => void
   focusNode: (id: string, animate?: boolean) => void
+  /** Opens the inline name editor on top of the card. */
+  editName: (id: string) => void
 }
 
 interface TreeCanvasProps {
@@ -32,6 +35,8 @@ interface TreeCanvasProps {
   onSelect: (id: string | null) => void
   onToggle: (id: string) => void
   onRename: (id: string, name: string) => void
+  /** Quick-action bar shown right under the selected card. */
+  actions?: ReactNode
   ref?: Ref<TreeCanvasHandle>
 }
 
@@ -93,7 +98,7 @@ function easeInOutCubic(t: number): number {
 
 const clampScale = (k: number) => Math.min(MAX_SCALE, Math.max(MIN_SCALE, k))
 
-export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onRename, ref }: TreeCanvasProps) {
+export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onRename, actions, ref }: TreeCanvasProps) {
   const svgRef = useRef<SVGSVGElement>(null)
   const viewportRef = useRef<SVGGElement>(null)
   const zoomRef = useRef<ZoomBehavior<SVGSVGElement, unknown> | null>(null)
@@ -104,6 +109,23 @@ export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onR
   const [inlineEdit, setInlineEdit] = useState<InlineEdit | null>(null)
   const [viewBox, setViewBox] = useState<Box | null>(null)
   const lastCullRef = useRef(0)
+  const actionsRef = useRef<HTMLDivElement>(null)
+  const selectedRef = useRef(selectedId)
+
+  /** Pins the quick-action bar under the selected card (runs on every pan/zoom frame, no re-render). */
+  const placeActions = useCallback((t: ZoomTransform) => {
+    const el = actionsRef.current
+    if (!el) return
+    const node = selectedRef.current ? layoutRef.current.byId.get(selectedRef.current) : undefined
+    if (!node) {
+      el.style.display = 'none'
+      return
+    }
+    const halfH = (node.type === 'wife' ? WIFE_H : MEMBER_H) / 2 + (node.isRoot ? 12 : 0)
+    el.style.display = ''
+    el.style.left = `${t.x + node.x * t.k}px`
+    el.style.top = `${t.y + (node.y + halfH) * t.k + 10}px`
+  }, [])
 
   /** World-space rectangle currently worth rendering (viewport + margin). */
   const updateViewBox = useCallback((t: ZoomTransform) => {
@@ -131,7 +153,9 @@ export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onR
 
   useLayoutEffect(() => {
     layoutRef.current = layout
-  }, [layout])
+    selectedRef.current = selectedId
+    placeActions(transformRef.current)
+  }, [layout, selectedId, actions, placeActions])
 
   const cancelAnimation = useCallback(() => {
     if (animationRef.current) cancelAnimationFrame(animationRef.current)
@@ -154,6 +178,7 @@ export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onR
         // Pan/zoom only rewrites the viewport transform; the memoised layers never re-render.
         transformRef.current = event.transform
         viewport.setAttribute('transform', event.transform.toString())
+        placeActions(event.transform)
         setZoomPercent(Math.round(event.transform.k * 100))
         if (performance.now() - lastCullRef.current > CULL_INTERVAL_MS) updateViewBox(event.transform)
       })
@@ -166,7 +191,7 @@ export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onR
       selection.on('.zoom', null)
       zoomRef.current = null
     }
-  }, [cancelAnimation, updateViewBox])
+  }, [cancelAnimation, updateViewBox, placeActions])
 
   useEffect(() => {
     const onResize = () => updateViewBox(transformRef.current)
@@ -234,20 +259,6 @@ export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onR
     moveCamera(cx, cy, t.k * factor, true, 280)
   }
 
-  useImperativeHandle(
-    ref,
-    () => ({
-      centerTree,
-      focusNode(id, animate = true) {
-        const node = layoutRef.current.byId.get(id)
-        if (!node) return
-        const k = Math.min(1.4, Math.max(transformRef.current.k, 1))
-        moveCamera(node.x, node.y, k, animate)
-      },
-    }),
-    [centerTree, moveCamera],
-  )
-
   const handleSelect = useCallback((id: string) => onSelect(id), [onSelect])
 
   const handleEdit = useCallback(
@@ -259,6 +270,21 @@ export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onR
       setInlineEdit({ id, value: node.name, left: t.x + node.x * t.k, top: t.y + node.y * t.k })
     },
     [onSelect],
+  )
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      centerTree,
+      focusNode(id, animate = true) {
+        const node = layoutRef.current.byId.get(id)
+        if (!node) return
+        const k = Math.min(1.4, Math.max(transformRef.current.k, 1))
+        moveCamera(node.x, node.y, k, animate)
+      },
+      editName: handleEdit,
+    }),
+    [centerTree, moveCamera, handleEdit],
   )
 
   const commitInlineEdit = () => {
@@ -321,6 +347,17 @@ export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onR
           <NodesLayer nodes={visibleNodes} selectedId={selectedId} onSelect={handleSelect} onToggle={onToggle} onEdit={handleEdit} />
         </g>
       </svg>
+
+      {actions && (
+        <div
+          ref={actionsRef}
+          className="absolute z-20 -translate-x-1/2"
+          style={{ display: 'none' }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {actions}
+        </div>
+      )}
 
       {inlineEdit && (
         <input
