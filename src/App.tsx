@@ -204,7 +204,7 @@ export default function App() {
           />
         )}
 
-        <div className="pointer-events-none absolute bottom-5 left-1/2 z-10 -translate-x-1/2 rounded-full bg-white/80 px-4 py-1.5 text-xs font-semibold whitespace-nowrap text-stone-700 shadow backdrop-blur">
+        <div className="pointer-events-none absolute bottom-5 left-1/2 z-10 hidden -translate-x-1/2 rounded-full bg-white/80 px-4 py-1.5 text-xs font-semibold whitespace-nowrap text-stone-700 shadow backdrop-blur sm:block">
           {people} شخص · {generations} {generations > 10 || generations < 3 ? 'جيل' : 'أجيال'} · حفظ تلقائي
         </div>
 

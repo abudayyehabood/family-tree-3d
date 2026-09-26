@@ -46,8 +46,8 @@ function ActionButton({
       onClick={onClick}
       disabled={disabled}
       title={title}
-      className={`flex h-10 items-center justify-center gap-1.5 rounded-lg text-sm font-bold shadow-sm transition disabled:cursor-not-allowed disabled:border-stone-200 disabled:bg-stone-200 disabled:text-stone-400 ${
-        wide ? 'col-span-2' : ''
+      className={`flex h-9 items-center justify-center gap-1 rounded-lg text-xs font-bold shadow-sm transition disabled:cursor-not-allowed disabled:border-stone-200 disabled:bg-stone-200 disabled:text-stone-400 sm:gap-1.5 sm:text-sm ${
+        wide ? 'col-span-2 max-sm:col-span-4' : ''
       } ${tones[tone]}`}
     >
       {children}
@@ -111,17 +111,17 @@ export default function SidePanel({ node, index, onClose, onRename, onNameMother
       className="absolute inset-x-2 top-2 z-30 flex max-h-[70vh] flex-col overflow-hidden rounded-2xl border border-amber-900/20 bg-[#fbf6ea]/97 shadow-2xl backdrop-blur sm:inset-x-auto sm:top-3 sm:right-3 sm:w-80"
       onClick={(e) => e.stopPropagation()}
     >
-      <div className="flex items-center gap-2 border-b border-amber-900/10 bg-amber-100/60 px-3 py-2">
-        <span className={`grid size-8 shrink-0 place-items-center rounded-lg ${iconTone}`}>
-          <Icon className="size-4" />
+      <div className="flex items-center gap-2 border-b border-amber-900/10 bg-amber-100/60 px-2 py-1 sm:px-3 sm:py-2">
+        <span className={`grid size-6 shrink-0 place-items-center rounded-md sm:size-8 sm:rounded-lg ${iconTone}`}>
+          <Icon className="size-3.5 sm:size-4" />
         </span>
         <p className="min-w-0 flex-1 truncate text-sm font-extrabold text-stone-900">{node.name}</p>
-        <button type="button" onClick={onClose} aria-label="إغلاق" className="rounded-lg p-1.5 text-stone-500 hover:bg-amber-200/60">
+        <button type="button" onClick={onClose} aria-label="إغلاق" className="rounded-lg p-1 text-stone-500 hover:bg-amber-200/60">
           <X className="size-5" />
         </button>
       </div>
 
-      <div className="flex-1 space-y-2 overflow-y-auto p-3">
+      <div className="flex-1 space-y-1.5 overflow-y-auto p-2 sm:space-y-2 sm:p-3">
         <form
           className="flex gap-1.5"
           onSubmit={(e) => {
@@ -136,26 +136,26 @@ export default function SidePanel({ node, index, onClose, onRename, onNameMother
             autoComplete="off"
             onChange={(e) => setDraft(e.target.value)}
             onFocus={(e) => e.target.select()}
-            className="h-10 min-w-0 flex-1 rounded-lg border-2 border-green-700/40 bg-white px-3 text-base font-extrabold text-stone-900 outline-none focus:border-green-600 focus:ring-2 focus:ring-green-300"
+            className="h-9 min-w-0 flex-1 rounded-lg border-2 border-green-700/40 bg-white px-2.5 text-base font-extrabold text-stone-900 outline-none focus:border-green-600 focus:ring-2 focus:ring-green-300 sm:h-10 sm:px-3"
           />
           <button
             type="submit"
             disabled={!trimmed || !dirty}
             aria-label="حفظ الاسم"
             title="حفظ الاسم"
-            className="grid size-10 shrink-0 place-items-center rounded-lg bg-green-700 text-white shadow transition hover:bg-green-600 disabled:bg-stone-200 disabled:text-stone-400"
+            className="grid size-9 shrink-0 place-items-center rounded-lg bg-green-700 text-white shadow transition hover:bg-green-600 disabled:bg-stone-200 disabled:text-stone-400 sm:size-10"
           >
             {dirty || !trimmed ? <Save className="size-4" /> : <Check className="size-4" />}
           </button>
         </form>
 
         {showMotherPicker && (
-          <label className="block text-xs text-stone-600">
+          <label className="flex items-center gap-2 text-xs text-stone-600">
             الأم
             <select
               value={mother?.id ?? UNKNOWN}
               onChange={(e) => setMotherId(e.target.value)}
-              className="mt-1 h-9 w-full rounded-lg border border-amber-900/25 bg-white px-2 text-sm font-bold text-stone-900 outline-none focus:ring-2 focus:ring-green-300"
+              className="h-8 min-w-0 flex-1 rounded-lg border border-amber-900/25 bg-white px-2 text-sm font-bold text-stone-900 outline-none focus:ring-2 focus:ring-green-300"
             >
               {mothers.map((m) => (
                 <option key={m.id} value={m.id}>
@@ -167,14 +167,14 @@ export default function SidePanel({ node, index, onClose, onRename, onNameMother
           </label>
         )}
 
-        <div className="grid grid-cols-2 gap-1.5">
+        <div className="grid grid-cols-4 gap-1 sm:grid-cols-2 sm:gap-1.5">
           <ActionButton
             tone="green"
             onClick={() => childParentId && onAddChild(childParentId, 'male')}
             disabled={!canAddChildren}
             title={childHint ?? 'إضافة ابن'}
           >
-            <UserPlus className="size-4" />
+            <UserPlus className="size-3.5 sm:size-4" />
             ابن
           </ActionButton>
           <ActionButton
@@ -183,7 +183,7 @@ export default function SidePanel({ node, index, onClose, onRename, onNameMother
             disabled={!canAddChildren}
             title={childHint ?? 'إضافة بنت'}
           >
-            <Baby className="size-4" />
+            <Baby className="size-3.5 sm:size-4" />
             بنت
           </ActionButton>
           {isMale && (
@@ -193,8 +193,8 @@ export default function SidePanel({ node, index, onClose, onRename, onNameMother
               disabled={wives >= MAX_WIVES}
               title={wives >= MAX_WIVES ? `الحد الأقصى ${MAX_WIVES} زوجات` : 'إضافة زوجة'}
             >
-              <Heart className="size-4" />
-              زوجة ({wives}/{MAX_WIVES})
+              <Heart className="size-3.5 sm:size-4" />
+              زوجة
             </ActionButton>
           )}
           <ActionButton
@@ -204,7 +204,7 @@ export default function SidePanel({ node, index, onClose, onRename, onNameMother
             disabled={isRoot}
             title={isRoot ? 'لا يمكن حذف المؤسس' : 'حذف'}
           >
-            <Trash2 className="size-4" />
+            <Trash2 className="size-3.5 sm:size-4" />
             حذف
           </ActionButton>
         </div>
