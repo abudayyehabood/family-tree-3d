@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { Baby, Check, ChevronsDownUp, ChevronsUpDown, Crown, Heart, LocateFixed, Save, Trash2, User, UserPlus, X } from 'lucide-react'
 import { MAX_GENERATION, MAX_WIVES } from '../model'
 import type { Gender, TreeNode } from '../model'
+import { wifeCount } from '../lib/tree'
 import type { TreeIndex } from '../lib/tree'
 
 const UNKNOWN = '__unknown__'
@@ -12,6 +13,7 @@ interface SidePanelProps {
   index: TreeIndex
   onClose: () => void
   onRename: (id: string, name: string) => void
+  onNameMother: (husbandId: string, name: string) => void
   onAddWife: (husbandId: string) => void
   onAddChild: (parentId: string, gender: Gender) => void
   onDelete: (id: string) => void
@@ -56,7 +58,7 @@ function ActionButton({
   )
 }
 
-export default function SidePanel({ node, index, onClose, onRename, onAddWife, onAddChild, onDelete, onFocus, onToggle }: SidePanelProps) {
+export default function SidePanel({ node, index, onClose, onRename, onNameMother, onAddWife, onAddChild, onDelete, onFocus, onToggle }: SidePanelProps) {
   const [draft, setDraft] = useState(node.name)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [savedName, setSavedName] = useState(node.name)
@@ -70,7 +72,9 @@ export default function SidePanel({ node, index, onClose, onRename, onAddWife, o
 
   const isWife = node.type === 'wife'
   const isMale = node.type === 'member' && node.gender === 'male'
-  const wives = isMale ? node.children.length : 0
+  const wives = isMale ? wifeCount(node) : 0
+  const unknownMother = isMale ? node.children.find((w) => w.unknown) : undefined
+  const [motherName, setMotherName] = useState('')
   const sons = isWife ? node.children.filter((c) => c.gender === 'male').length : 0
   const daughters = isWife ? node.children.length - sons : 0
   const atGenerationLimit = node.generation >= MAX_GENERATION
@@ -78,7 +82,7 @@ export default function SidePanel({ node, index, onClose, onRename, onAddWife, o
   /** Children hang under a wife: the wife herself, or one of the husband's wives. */
   const mothers = isWife ? [node] : isMale ? node.children : []
   /** A man can also get children with no named mother; they go under an unknown-mother knot. */
-  const offerUnknown = isMale && !mothers.some((m) => m.unknown) && wives < MAX_WIVES
+  const offerUnknown = isMale && !unknownMother
   const mother = motherId === UNKNOWN ? undefined : (mothers.find((m) => m.id === motherId) ?? mothers[0])
   const childParentId = mother ? mother.id : offerUnknown ? node.id : undefined
   const canAddChildren = !!childParentId && !atGenerationLimit
@@ -87,7 +91,7 @@ export default function SidePanel({ node, index, onClose, onRename, onAddWife, o
     : node.type === 'member' && node.gender === 'female'
       ? 'الأنثى نهاية الفرع في هذه الشجرة؛ يُضاف الأبناء تحت الأم (الزوجة).'
       : isMale && !mother
-        ? 'الأم غير معروفة: سيظهر الأبناء تحت عقدة «؟»، ويمكنك كتابة اسم الأم لاحقاً.'
+        ? 'الأم غير معروفة: يظهر الأبناء مباشرة تحت الأب، ويمكنك كتابة اسم الأم لاحقاً.'
         : null
 
   const title = isRoot ? 'المؤسس' : node.unknown ? 'أم غير معروفة (اكتب اسمها إن عرفته)' : isWife ? 'زوجة' : node.gender === 'male' ? 'فرد من العائلة · ذكر' : 'فرد من العائلة · أنثى'
@@ -197,6 +201,36 @@ export default function SidePanel({ node, index, onClose, onRename, onAddWife, o
                 إضافة بنت (أنثى)
               </ActionButton>
             </div>
+            {unknownMother && (
+              <form
+                className="space-y-1.5 rounded-lg border border-amber-900/15 bg-white/80 p-2"
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  if (motherName.trim()) onNameMother(node.id, motherName.trim())
+                }}
+              >
+                <label htmlFor="mother-name" className="block text-xs text-stone-600">
+                  أم الأبناء غير معروفة ({unknownMother.children.length}). اكتب اسمها إن عرفته:
+                </label>
+                <div className="flex gap-1.5">
+                  <input
+                    id="mother-name"
+                    value={motherName}
+                    onChange={(e) => setMotherName(e.target.value)}
+                    placeholder="اسم الأم"
+                    className="h-9 min-w-0 flex-1 rounded-lg border border-amber-900/25 bg-white px-2 text-sm font-bold outline-none focus:ring-2 focus:ring-green-300"
+                  />
+                  <button
+                    type="submit"
+                    disabled={!motherName.trim() || wives >= MAX_WIVES}
+                    title={wives >= MAX_WIVES ? `الحد الأقصى ${MAX_WIVES} زوجات` : undefined}
+                    className="h-9 rounded-lg bg-amber-500 px-3 text-xs font-bold text-amber-950 hover:bg-amber-400 disabled:bg-stone-200 disabled:text-stone-400"
+                  >
+                    حفظ
+                  </button>
+                </div>
+              </form>
+            )}
             {childHint && <p className="rounded-lg bg-amber-100 px-3 py-2 text-xs text-amber-900">{childHint}</p>}
           </div>
           {node.children.length > 0 && (

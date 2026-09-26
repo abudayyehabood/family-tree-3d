@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { Baby, Heart, Pencil, Trash2, UserPlus } from 'lucide-react'
 import { MAX_GENERATION, MAX_WIVES } from '../model'
 import type { Gender, TreeNode } from '../model'
+import { wifeCount } from '../lib/tree'
 
 interface NodeActionsProps {
   node: TreeNode
@@ -42,37 +43,38 @@ function ActionChip({
 export default function NodeActions({ node, isRoot, onEditName, onAddWife, onAddChild, onDelete }: NodeActionsProps) {
   const isWife = node.type === 'wife'
   const isMale = node.type === 'member' && node.gender === 'male'
-  // Children go under the wife herself, the husband's first wife, or (no wife yet) straight under
-  // the man, where an unknown-mother knot is created for them.
-  const target = isWife ? node : isMale ? (node.children[0] ?? node) : undefined
+  // Children go under the wife herself, the husband's first named wife, or (no wife yet) straight
+  // under the man, with an invisible unknown mother.
+  const wives = wifeCount(node)
+  const target = isWife ? node : isMale ? (node.children.find((w) => !w.unknown) ?? node) : undefined
   const childBlocked = !target || node.generation >= MAX_GENERATION
   const childHint = !target
     ? 'الأنثى نهاية الفرع؛ يُضاف الأبناء تحت الأم'
     : node.generation >= MAX_GENERATION
       ? `الحد الأقصى ${MAX_GENERATION} جيلاً`
-      : isMale && !node.children.length
-        ? 'الأم غير معروفة؛ يمكنك كتابة اسمها لاحقاً'
+      : isMale && !wives
+        ? 'بدون زوجة؛ يمكنك كتابة اسم الأم لاحقاً من اللوحة'
         : ''
 
   return (
     <div className="flex flex-wrap items-center justify-center gap-1.5 rounded-2xl border border-amber-900/20 bg-[#fbf6ea]/95 p-1.5 shadow-xl backdrop-blur">
       <ActionChip
-        label={node.unknown ? 'كتابة اسم الأم' : 'تعديل الاسم'}
+        label="تعديل الاسم"
         onClick={() => onEditName(node.id)}
         tone="bg-[#4a2c16] text-amber-50 hover:bg-[#5c371b]"
       >
         <Pencil className="size-3.5" />
-        {node.unknown ? 'اسم الأم' : 'تعديل'}
+        تعديل
       </ActionChip>
       {isMale && (
         <ActionChip
           label="إضافة زوجة جديدة"
           onClick={() => onAddWife(node.id)}
-          disabled={node.children.length >= MAX_WIVES}
+          disabled={wives >= MAX_WIVES}
           tone="bg-amber-500 text-amber-950 hover:bg-amber-400"
         >
           <Heart className="size-3.5" />
-          زوجة ({node.children.length}/{MAX_WIVES})
+          زوجة ({wives}/{MAX_WIVES})
         </ActionChip>
       )}
       <ActionChip

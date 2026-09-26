@@ -51,8 +51,6 @@ export interface LayoutNode {
   childCount: number
   /** People hidden under this node while it is collapsed (0 when expanded). */
   hiddenCount: number
-  /** Unknown-mother placeholder, drawn as a small knot. */
-  unknown: boolean
 }
 
 export interface Box {
@@ -102,9 +100,8 @@ export function branchThickness(generation: number): number {
   return Math.max(3, 26 * Math.pow(0.8, generation - 1))
 }
 
-export const KNOT_SIZE = 34
-const cardW = (n: TreeNode) => (n.unknown ? KNOT_SIZE : n.type === 'wife' ? WIFE_W : MEMBER_W)
-const cardH = (n: TreeNode) => (n.unknown ? KNOT_SIZE : n.type === 'wife' ? WIFE_H : MEMBER_H)
+const cardW = (n: TreeNode) => (n.unknown ? 0 : n.type === 'wife' ? WIFE_W : MEMBER_W)
+const cardH = (n: TreeNode) => (n.unknown ? 0 : n.type === 'wife' ? WIFE_H : MEMBER_H)
 
 function collides(a: Polar, b: Polar): boolean {
   return Math.abs(a.x - b.x) < (a.w + b.w) / 2 + PAD_X && Math.abs(a.y - b.y) < (a.h + b.h) / 2 + PAD_Y
@@ -181,6 +178,12 @@ export function computeLayout(data: TreeNode, index: TreeIndex): TreeLayout {
   for (let depth = 1; depth < levels.length; depth++) {
     const ring = levels[depth]
     const count = ring.length
+    // A ring made only of unknown mothers takes no space: each sits on her husband, and the
+    // children grow straight out of him.
+    if (ring.every((n) => n.data.unknown)) {
+      ring.forEach((n) => polar.set(n.data.id, { ...polar.get(n.parent!.data.id)!, w: 0, h: 0 }))
+      continue
+    }
     const isWife = ring[0].data.type === 'wife'
     const step = isWife ? WIFE_STEP : CHILD_STEP
     const minArc = isWife ? WIFE_ARC : MEMBER_ARC
@@ -194,7 +197,7 @@ export function computeLayout(data: TreeNode, index: TreeIndex): TreeLayout {
     // The whole ring must fit inside ±72°.
     while (count > 1 && (count - 1) * chordAngle(minChord, radius) > 2 * MAX_THETA) radius += RADIUS_BUMP
 
-    const below = placedRings.flat()
+    const below = placedRings.flat().filter((p) => p.w > 0)
     let placed: Polar[] = []
     for (let attempt = 0; attempt <= MAX_BUMPS; attempt++) {
       const minDelta = Math.max(minArc / radius, chordAngle(minChord, radius))
@@ -214,7 +217,7 @@ export function computeLayout(data: TreeNode, index: TreeIndex): TreeLayout {
       })
       // Only rings closer than a card diagonal can collide with this one.
       const near = below.filter((p) => radius - p.r < 160)
-      if (!placed.some((p) => near.some((q) => collides(p, q)))) break
+      if (!placed.some((p) => p.w > 0 && near.some((q) => collides(p, q)))) break
       radius += RADIUS_BUMP
     }
 
@@ -249,8 +252,9 @@ export function computeLayout(data: TreeNode, index: TreeIndex): TreeLayout {
       collapsed,
       childCount: d.children.length,
       hiddenCount: collapsed ? (index.get(d.id)?.descendants ?? 0) : 0,
-      unknown: !!d.unknown,
     }
+    // Unknown mothers are invisible: no card, no branch of their own.
+    if (d.unknown) return
     nodes.push(node)
     byId.set(d.id, node)
     bounds.minX = Math.min(bounds.minX, p.x - p.w / 2 - PAD_X)
@@ -259,22 +263,24 @@ export function computeLayout(data: TreeNode, index: TreeIndex): TreeLayout {
     bounds.maxY = Math.max(bounds.maxY, p.y + p.h / 2)
 
     if (!n.parent) return
-    const pp = polar.get(n.parent.data.id)!
+    // A child of an unknown mother branches straight from the father.
+    const from = n.parent.data.unknown ? n.parent.parent! : n.parent
+    const pp = polar.get(from.data.id)!
     const P: Point = [pp.x, pp.y]
     const C: Point = [p.x, p.y]
     const dr = p.r - pp.r
     const childDir: Point = [Math.sin(p.theta), -Math.cos(p.theta)]
     // Branches leave the parent along its own radius (straight up for the founder) and arrive along
     // the child's radius, so every branch bends smoothly upward and outward.
-    const parentDir: Point = n.parent.parent ? [Math.sin(pp.theta), -Math.cos(pp.theta)] : [0, -1]
+    const parentDir: Point = from.parent ? [Math.sin(pp.theta), -Math.cos(pp.theta)] : [0, -1]
     const c1: Point = [P[0] + parentDir[0] * dr * 0.5, P[1] + parentDir[1] * dr * 0.5]
     const c2: Point = [C[0] - childDir[0] * dr * 0.45, C[1] - childDir[1] * dr * 0.45]
 
-    const isWifeBranch = d.type === 'wife' && !d.unknown
-    const parentGen = n.parent.data.generation
+    const isWifeBranch = d.type === 'wife'
+    const parentGen = from.data.generation
     const base = branchThickness(parentGen)
     let w0 = isWifeBranch ? base : base * 0.8
-    if (!n.parent.parent) w0 = Math.max(w0, limbBaseWidth)
+    if (!from.parent) w0 = Math.max(w0, limbBaseWidth)
     const w1 = Math.max(2.5, isWifeBranch ? base * 0.62 : branchThickness(d.generation) * 0.55)
     const pad = w0 / 2
     const xs = [P[0], c1[0], c2[0], C[0]]

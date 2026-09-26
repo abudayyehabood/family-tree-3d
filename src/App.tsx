@@ -12,6 +12,7 @@ import {
   collapseFromGeneration,
   deleteNode,
   expandNodes,
+  nameUnknownMother,
   maxGeneration,
   renameNode,
   toggleCollapse,
@@ -196,6 +197,7 @@ export default function App() {
             index={index}
             onClose={() => setSelectedId(null)}
             onRename={handleRename}
+            onNameMother={(id, name) => setRoot((r) => nameUnknownMother(r, id, name))}
             onAddWife={handleAddWife}
             onAddChild={handleAddChild}
             onDelete={handleDelete}

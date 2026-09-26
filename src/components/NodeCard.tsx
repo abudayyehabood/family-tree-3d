@@ -1,7 +1,7 @@
 import { memo } from 'react'
 import type { MouseEvent } from 'react'
 import type { Gender, NodeType } from '../model'
-import { KNOT_SIZE, MEMBER_H, MEMBER_W, WIFE_H, WIFE_W } from '../lib/treeLayout'
+import { MEMBER_H, MEMBER_W, WIFE_H, WIFE_W } from '../lib/treeLayout'
 
 interface NodeCardProps {
   id: string
@@ -15,7 +15,6 @@ interface NodeCardProps {
   collapsed: boolean
   childCount: number
   hiddenCount: number
-  unknown: boolean
   selected: boolean
   onSelect: (id: string) => void
   onToggle: (id: string) => void
@@ -63,7 +62,7 @@ function ToggleBadge({ collapsed, hiddenCount, onClick }: { collapsed: boolean; 
 }
 
 function NodeCard(props: NodeCardProps) {
-  const { id, type, gender, name, generation, x, y, isRoot, collapsed, childCount, hiddenCount, unknown, selected, onSelect, onToggle, onEdit } = props
+  const { id, type, gender, name, generation, x, y, isRoot, collapsed, childCount, hiddenCount, selected, onSelect, onToggle, onEdit } = props
 
   const handleSelect = (e: MouseEvent) => {
     e.stopPropagation()
@@ -76,27 +75,6 @@ function NodeCard(props: NodeCardProps) {
   const handleToggle = (e: MouseEvent) => {
     e.stopPropagation()
     onToggle(id)
-  }
-
-  if (unknown) {
-    // Mother's name unknown: a wooden knot on the branch instead of a wife card.
-    const r = KNOT_SIZE / 2
-    return (
-      <g className="node-card" transform={`translate(${x},${y})`} onClick={handleSelect} onDoubleClick={handleEdit}>
-        <title>الأم غير معروفة (انقر نقراً مزدوجاً لكتابة اسمها)</title>
-        {selected && <circle r={r + 6} fill="#fde047" fillOpacity={0.5} stroke="#2563eb" strokeWidth={3} />}
-        <circle r={r} fill="#6b4423" stroke="#3b2210" strokeWidth={2.5} />
-        <circle r={r - 6} fill="none" stroke="#a47148" strokeWidth={2} strokeDasharray="4 3" />
-        <text y={6} textAnchor="middle" fontSize={17} fontWeight={800} fill="#fde68a">
-          ؟
-        </text>
-        {childCount > 0 && (
-          <g transform={`translate(${-r - 4},${-r + 2})`}>
-            <ToggleBadge collapsed={collapsed} hiddenCount={hiddenCount} onClick={handleToggle} />
-          </g>
-        )}
-      </g>
-    )
   }
 
   if (type === 'wife') {

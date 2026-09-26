@@ -6,7 +6,7 @@ import type { CrownBlob, LayoutNode } from '../lib/treeLayout'
  * card. Each layer shares a single group opacity, so overlapping circles merge into an even tone.
  */
 function Foliage({ nodes, crown }: { nodes: LayoutNode[]; crown: CrownBlob[] }) {
-  const leaves = nodes.filter((n) => !n.isRoot && !n.unknown)
+  const leaves = nodes.filter((n) => !n.isRoot)
   return (
     <g className="foliage-layer">
       <g fill="#4d8c3a" opacity={0.16}>

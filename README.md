@@ -13,7 +13,7 @@ An Arabic, right-to-left family tree drawn as a living tree: trunk, roots, green
 ## Rules
 
 - A male member can have up to 4 wives; children are added under a wife.
-- If the mother's name is unknown, add sons/daughters straight to the man. They hang under a small «؟» knot; rename the knot later to turn it into a named wife.
+- If the mother's name is unknown, add sons/daughters straight to the man; their branches grow directly from him (no wife card). Type the mother's name later in his panel to turn her into a named wife.
 - A female member is a leaf. Maximum depth is 15 generations.
 
 ## Run

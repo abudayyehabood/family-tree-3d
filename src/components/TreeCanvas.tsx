@@ -4,7 +4,7 @@ import { select } from 'd3-selection'
 import { zoom, zoomIdentity } from 'd3-zoom'
 import type { D3ZoomEvent, ZoomBehavior, ZoomTransform } from 'd3-zoom'
 import { Crosshair, Minus, Plus } from 'lucide-react'
-import { KNOT_SIZE, MEMBER_H, WIFE_H } from '../lib/treeLayout'
+import { MEMBER_H, WIFE_H } from '../lib/treeLayout'
 import type { Box, LayoutLink, LayoutNode, TreeLayout } from '../lib/treeLayout'
 import Branch from './Branch'
 import Foliage from './Foliage'
@@ -82,7 +82,6 @@ const NodesLayer = memo(function NodesLayer({ nodes, selectedId, onSelect, onTog
           collapsed={n.collapsed}
           childCount={n.childCount}
           hiddenCount={n.hiddenCount}
-          unknown={n.unknown}
           selected={n.id === selectedId}
           onSelect={onSelect}
           onToggle={onToggle}
@@ -122,7 +121,7 @@ export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onR
       el.style.display = 'none'
       return
     }
-    const halfH = (node.unknown ? KNOT_SIZE : node.type === 'wife' ? WIFE_H : MEMBER_H) / 2 + (node.isRoot ? 12 : 0)
+    const halfH = (node.type === 'wife' ? WIFE_H : MEMBER_H) / 2 + (node.isRoot ? 12 : 0)
     el.style.display = ''
     el.style.left = `${t.x + node.x * t.k}px`
     el.style.top = `${t.y + (node.y + halfH) * t.k + 10}px`

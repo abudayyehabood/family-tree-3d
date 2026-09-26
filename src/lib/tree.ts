@@ -65,6 +65,14 @@ export function renameNode(root: TreeNode, id: string, name: string): TreeNode {
   return updateNode(root, id, (node) => (node.name === name ? node : { ...node, name, unknown: undefined }))
 }
 
+/** Gives a man's unknown mother a name, turning her into a regular wife (needs a free wife slot). */
+export function nameUnknownMother(root: TreeNode, husbandId: string, name: string): TreeNode {
+  return updateNode(root, husbandId, (husband) => {
+    if (!canAddWife(husband)) return husband
+    return { ...husband, children: husband.children.map((w) => (w.unknown ? { ...w, name, unknown: undefined } : w)) }
+  })
+}
+
 export function toggleCollapse(root: TreeNode, id: string): TreeNode {
   return updateNode(root, id, (node) =>
     node.children.length ? { ...node, collapsed: !node.collapsed } : node,
@@ -76,8 +84,13 @@ export function expandNodes(root: TreeNode, ids: Iterable<string>): TreeNode {
   return transform(root, (node) => (set.has(node.id) && node.collapsed ? { ...node, collapsed: false } : node))
 }
 
+/** Named wives only; an unknown-mother placeholder does not use a wife slot. */
+export function wifeCount(node: TreeNode): number {
+  return node.children.filter((w) => !w.unknown).length
+}
+
 export function canAddWife(node: TreeNode): boolean {
-  return node.type === 'member' && node.gender === 'male' && node.children.length < MAX_WIVES
+  return node.type === 'member' && node.gender === 'male' && wifeCount(node) < MAX_WIVES
 }
 
 export function canAddChild(node: TreeNode): boolean {
@@ -140,7 +153,6 @@ export function addChildToHusband(
     if (husband.type !== 'member' || husband.gender !== 'male' || husband.generation >= MAX_GENERATION) return husband
     let mother = husband.children.find((w) => w.unknown)
     if (!mother) {
-      if (husband.children.length >= MAX_WIVES) return husband
       mother = { id: newId(), type: 'wife', name: UNKNOWN_MOTHER_NAME, gender: 'female', generation: husband.generation, unknown: true, children: [] }
     }
     const child: TreeNode = { id: newId(), type: 'member', name, gender, generation: husband.generation + 1, children: [] }
@@ -199,7 +211,7 @@ export function validateTree(input: unknown): TreeNode {
     const label = `«${r.name}»`
     if (expectedType === 'member') {
       if (gender === 'female' && rawChildren.length) throw new Error(`${label}: لا يمكن إضافة فروع إلى الأنثى`)
-      if (rawChildren.length > MAX_WIVES) throw new Error(`${label}: الحد الأقصى ${MAX_WIVES} زوجات`)
+      if (rawChildren.filter((c) => !(c && typeof c === 'object' && (c as { unknown?: unknown }).unknown === true)).length > MAX_WIVES) throw new Error(`${label}: الحد الأقصى ${MAX_WIVES} زوجات`)
       children = rawChildren.map((c, i) => clean(c, 'wife', expectedGen, `${label} ← زوجة ${i + 1}`))
     } else {
       if (rawChildren.length && expectedGen >= MAX_GENERATION) {
