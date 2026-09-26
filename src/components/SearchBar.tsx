@@ -8,6 +8,8 @@ import type { TreeIndex } from '../lib/tree'
 interface SearchBarProps {
   index: TreeIndex
   onPick: (id: string) => void
+  /** Open the result list upwards — the phone's search sits at the bottom of the screen. */
+  dropUp?: boolean
 }
 
 interface SearchEntry {
@@ -29,7 +31,7 @@ function describe(index: TreeIndex, node: TreeNode): string {
   return `${node.gender === 'male' ? 'ابن' : 'بنت'} ${father?.name ?? ''}${mother} · الجيل ${node.generation}`
 }
 
-export default function SearchBar({ index, onPick }: SearchBarProps) {
+export default function SearchBar({ index, onPick, dropUp }: SearchBarProps) {
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
   const [active, setActive] = useState(0)
@@ -102,7 +104,7 @@ export default function SearchBar({ index, onPick }: SearchBarProps) {
         </button>
       )}
       {open && query && (
-        <ul className="absolute top-full right-0 left-0 z-50 mt-2 max-h-80 overflow-y-auto rounded-xl border border-amber-900/15 bg-amber-50 py-1 shadow-xl">
+        <ul className={`absolute right-0 left-0 z-50 max-h-80 overflow-y-auto rounded-xl border border-amber-900/15 bg-amber-50 py-1 shadow-xl ${dropUp ? 'bottom-full mb-2' : 'top-full mt-2'}`}>
           {results.length === 0 && <li className="px-4 py-3 text-sm text-stone-500">لا توجد نتائج</li>}
           {results.map((r, i) => (
             <li key={r.node.id}>

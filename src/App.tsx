@@ -147,7 +147,7 @@ export default function App() {
   }
 
   return (
-    <div dir="rtl" className="flex h-full flex-col">
+    <div dir="rtl" className="relative flex h-full flex-col">
       <Toolbar
         index={index}
         onSearchPick={focusPerson}
