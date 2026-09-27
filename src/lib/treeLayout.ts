@@ -1,7 +1,7 @@
 import { hierarchy, tree } from 'd3-hierarchy'
 import type { HierarchyPointNode } from 'd3-hierarchy'
 import type { Gender, NodeType, TreeNode } from '../model'
-import { taperedCubicPath } from './geometry'
+import { taperedPolylinePath } from './geometry'
 import type { Point } from './geometry'
 import type { TreeIndex } from './tree'
 
@@ -86,6 +86,9 @@ const RELAX_ITERATIONS = 10
 const RADIUS_BUMP = 12
 const MAX_BUMPS = 400
 
+/** Points sampled along each branch's polar sweep. */
+const BRANCH_SAMPLES = 16
+
 const SEPARATION_SIBLINGS = 1.1
 const SEPARATION_COUSINS = 1.5
 
@@ -147,8 +150,13 @@ interface Polar {
   h: number
 }
 
+/**
+ * Tapers with depth, but never to a hair: at 0.8 per generation a branch hit the old 3px floor by
+ * generation 10 and stayed there for the remaining five, so the outer half of a deep tree was drawn
+ * in threads thinner than a card's border while spanning a thousand px or more.
+ */
 export function branchThickness(generation: number): number {
-  return Math.max(3, 26 * Math.pow(0.8, generation - 1))
+  return Math.max(7, 26 * Math.pow(0.88, generation - 1))
 }
 
 const cardW = (n: TreeNode) => (n.unknown ? 0 : n.type === 'wife' ? WIFE_W : MEMBER_W)
@@ -317,15 +325,22 @@ export function computeLayout(data: TreeNode, index: TreeIndex): TreeLayout {
     // A child of an unknown mother branches straight from the father.
     const from = n.parent.data.unknown ? n.parent.parent! : n.parent
     const pp = polar.get(from.data.id)!
-    const P: Point = [pp.x, pp.y]
-    const C: Point = [p.x, p.y]
     const dr = p.r - pp.r
-    const childDir: Point = [Math.sin(p.theta), -Math.cos(p.theta)]
-    // Branches leave the parent along its own radius (straight up for the founder) and arrive along
-    // the child's radius, so every branch bends smoothly upward and outward.
-    const parentDir: Point = from.parent ? [Math.sin(pp.theta), -Math.cos(pp.theta)] : [0, -1]
-    const c1: Point = [P[0] + parentDir[0] * dr * 0.5, P[1] + parentDir[1] * dr * 0.5]
-    const c2: Point = [C[0] - childDir[0] * dr * 0.45, C[1] - childDir[1] * dr * 0.45]
+    /*
+     * The branch is swept in polar space: the radius climbs steadily while the angle eases from the
+     * parent's to the child's. Both ends still leave and arrive along their own radius, so the tree
+     * looks the same, but the curve now stays inside the ring gap it belongs to and never reverses
+     * in angle. The Cartesian cubic this replaces did neither: its inward control point pulled long
+     * sweeps up to 255px back inside the parent's radius, into the ring below, which is where 2,220
+     * of the 3,803 branch crossings came from.
+     */
+    const centre: Point[] = []
+    for (let i = 0; i <= BRANCH_SAMPLES; i++) {
+      const t = i / BRANCH_SAMPLES
+      const r = pp.r + dr * t
+      const theta = pp.theta + (p.theta - pp.theta) * (t * t * (3 - 2 * t))
+      centre.push([r * Math.sin(theta), -r * Math.cos(theta)])
+    }
 
     const isWifeBranch = d.type === 'wife'
     const parentGen = from.data.generation
@@ -334,11 +349,11 @@ export function computeLayout(data: TreeNode, index: TreeIndex): TreeLayout {
     if (!from.parent) w0 = Math.max(w0, limbBaseWidth)
     const w1 = Math.max(2.5, isWifeBranch ? base * 0.62 : branchThickness(d.generation) * 0.55)
     const pad = w0 / 2
-    const xs = [P[0], c1[0], c2[0], C[0]]
-    const ys = [P[1], c1[1], c2[1], C[1]]
+    const xs = centre.map((q) => q[0])
+    const ys = centre.map((q) => q[1])
     links.push({
       id: d.id,
-      d: taperedCubicPath(P, c1, c2, C, w0, w1),
+      d: taperedPolylinePath(centre, w0, w1),
       kind: isWifeBranch ? 'wife' : 'child',
       box: {
         minX: Math.min(...xs) - pad,

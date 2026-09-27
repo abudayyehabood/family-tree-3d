@@ -47,6 +47,33 @@ export function taperedCubicPath(p0: Point, p1: Point, p2: Point, p3: Point, w0:
   return `M${fmt(left[0])}${smoothThrough(left)}L${fmt(right[0])}${smoothThrough(right)}Z`
 }
 
+/**
+ * Filled, tapered shape following an arbitrary centre-line, width w0 at the first point tapering to
+ * w1 at the last. Same flare as `taperedCubicPath`; used where the centre-line is a polar sweep and
+ * therefore cannot be expressed as a single cubic.
+ */
+export function taperedPolylinePath(centre: Point[], w0: number, w1: number): string {
+  const left: Point[] = []
+  const right: Point[] = []
+  const last = centre.length - 1
+  for (let i = 0; i <= last; i++) {
+    const [x, y] = centre[i]
+    const prev = centre[Math.max(0, i - 1)]
+    const next = centre[Math.min(last, i + 1)]
+    const dx = next[0] - prev[0]
+    const dy = next[1] - prev[1]
+    const len = Math.hypot(dx, dy) || 1
+    const nx = -dy / len
+    const ny = dx / len
+    const mt = 1 - i / last
+    const hw = (w1 + (w0 - w1) * Math.pow(mt, 1.4)) / 2
+    left.push([x + nx * hw, y + ny * hw])
+    right.push([x - nx * hw, y - ny * hw])
+  }
+  right.reverse()
+  return `M${fmt(left[0])}${smoothThrough(left)}L${fmt(right[0])}${smoothThrough(right)}Z`
+}
+
 /** Tapered branch with vertical tangents at both ends (used for the roots). */
 export function taperedBranchPath(sx: number, sy: number, tx: number, ty: number, w0: number, w1: number, samples = 10): string {
   const my = sy + (ty - sy) * 0.5
