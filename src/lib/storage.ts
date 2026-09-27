@@ -5,6 +5,25 @@ const STORAGE_KEY = 'organic_family_tree_v3'
 /** Keys written by earlier versions; their data is discarded. */
 const LEGACY_KEYS = ['arabic-family-tree:v1']
 
+/**
+ * Asks the browser to keep this origin's storage.
+ *
+ * iOS Safari clears script-writable storage for sites the user has not opened in seven days, which
+ * for a family tree kept in localStorage means it is simply gone — the exact case where nobody has
+ * a recent export either. Granting is at the browser's discretion (Safari weighs it against how
+ * the site is used, Chrome against engagement and whether it is installed), so the answer is worth
+ * reporting rather than assuming.
+ */
+export async function persistStorage(): Promise<'granted' | 'denied' | 'unsupported'> {
+  try {
+    if (!navigator.storage?.persist) return 'unsupported'
+    if (await navigator.storage.persisted()) return 'granted'
+    return (await navigator.storage.persist()) ? 'granted' : 'denied'
+  } catch {
+    return 'unsupported'
+  }
+}
+
 export function loadTree(): TreeNode | null {
   try {
     for (const key of LEGACY_KEYS) localStorage.removeItem(key)

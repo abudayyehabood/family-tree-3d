@@ -1,12 +1,16 @@
 import { useState } from 'react'
 import type { ComponentType } from 'react'
-import { Download, FilePlus2, MoreHorizontal, Search, TreeDeciduous, Upload, Users, Zap } from 'lucide-react'
+import { Download, FilePlus2, MoreHorizontal, Redo2, Search, TreeDeciduous, Undo2, Upload, Users, Zap } from 'lucide-react'
 import type { TreeIndex } from '../lib/tree'
 import SearchBar from './SearchBar'
 
 interface ToolbarProps {
   index: TreeIndex
   onSearchPick: (id: string) => void
+  canUndo: boolean
+  canRedo: boolean
+  onUndo: () => void
+  onRedo: () => void
   onStress: () => void
   onDemo: () => void
   onReset: () => void
@@ -49,12 +53,14 @@ function PillButton({
   onClick,
   active,
   expanded,
+  disabled,
 }: {
   icon: ComponentType<{ className?: string }>
   label: string
   onClick: () => void
   active?: boolean
   expanded?: boolean
+  disabled?: boolean
 }) {
   return (
     <button
@@ -63,8 +69,9 @@ function PillButton({
       title={label}
       aria-label={label}
       aria-expanded={expanded}
-      className={`grid size-6 shrink-0 place-items-center rounded-full transition ${
-        active ? 'bg-amber-500 text-amber-950' : 'bg-white/10 text-amber-50 hover:bg-white/25'
+      disabled={disabled}
+      className={`grid size-6 shrink-0 place-items-center rounded-full transition disabled:text-amber-50/25 ${
+        active ? 'bg-amber-500 text-amber-950' : 'bg-white/10 text-amber-50 hover:bg-white/25 disabled:bg-white/5'
       }`}
     >
       <Icon className="size-3" />
@@ -72,7 +79,7 @@ function PillButton({
   )
 }
 
-export default function Toolbar({ index, onSearchPick, onStress, onDemo, onReset, onExport, onImport }: ToolbarProps) {
+export default function Toolbar({ index, onSearchPick, canUndo, canRedo, onUndo, onRedo, onStress, onDemo, onReset, onExport, onImport }: ToolbarProps) {
   const [searchOpen, setSearchOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
 
@@ -114,6 +121,29 @@ export default function Toolbar({ index, onSearchPick, onStress, onDemo, onReset
           <SearchBar index={index} onPick={onSearchPick} />
         </div>
         <div className="mr-auto flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={onUndo}
+            disabled={!canUndo}
+            title="تراجع (Ctrl+Z)"
+            aria-label="تراجع"
+            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-amber-100/20 bg-white/10 px-3 text-sm font-semibold text-amber-50 transition hover:bg-white/20 disabled:border-transparent disabled:bg-white/5 disabled:text-amber-50/30"
+          >
+            <Undo2 className="size-4" />
+            <span className="hidden lg:inline">تراجع</span>
+          </button>
+          <button
+            type="button"
+            onClick={onRedo}
+            disabled={!canRedo}
+            title="إعادة (Ctrl+Shift+Z)"
+            aria-label="إعادة"
+            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-amber-100/20 bg-white/10 px-3 text-sm font-semibold text-amber-50 transition hover:bg-white/20 disabled:border-transparent disabled:bg-white/5 disabled:text-amber-50/30"
+          >
+            <Redo2 className="size-4" />
+            <span className="hidden lg:inline">إعادة</span>
+          </button>
+          <span className="h-6 w-px bg-amber-100/20" />
           {tools.map((tool) => (
             <ToolButton key={tool.label} tool={tool} />
           ))}
@@ -140,6 +170,8 @@ export default function Toolbar({ index, onSearchPick, onStress, onDemo, onReset
                 }}
               />
             ))}
+        <PillButton icon={Undo2} label="تراجع" disabled={!canUndo} onClick={onUndo} />
+        <PillButton icon={Redo2} label="إعادة" disabled={!canRedo} onClick={onRedo} />
         <PillButton icon={MoreHorizontal} label="أدوات" expanded={menuOpen} active={menuOpen} onClick={() => setMenuOpen((v) => !v)} />
         <PillButton
           icon={Search}

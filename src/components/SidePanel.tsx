@@ -156,14 +156,18 @@ export default function SidePanel({ node, index, onClose, onRename, onNameMother
           </button>
         </form>
 
-        {/* The picker is pushed below the action row on a phone; on desktop it keeps its place in the column. */}
+        {/*
+          Desktop only. On a phone a new child goes to the first wife, and you pick a different
+          mother by selecting *her* card and adding the child from there — which beats spending a
+          second row of the strip on a control most people never need.
+        */}
         {showMotherPicker && (
-          <label className="order-last flex basis-full items-center gap-2 text-xs text-stone-600 sm:order-none sm:basis-auto">
+          <label className="hidden items-center gap-2 text-xs text-stone-600 sm:flex">
             الأم
             <select
               value={mother?.id ?? UNKNOWN}
               onChange={(e) => setMotherId(e.target.value)}
-              className="h-7 min-w-0 flex-1 rounded-md border border-amber-900/25 bg-white px-1.5 text-sm font-bold text-stone-900 outline-none focus:ring-2 focus:ring-green-300 sm:h-8 sm:rounded-lg sm:px-2"
+              className="h-8 min-w-0 flex-1 rounded-lg border border-amber-900/25 bg-white px-2 text-sm font-bold text-stone-900 outline-none focus:ring-2 focus:ring-green-300"
             >
               {mothers.map((m) => (
                 <option key={m.id} value={m.id}>

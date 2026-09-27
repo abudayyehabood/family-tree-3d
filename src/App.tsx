@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import type { Gender, TreeNode } from './model'
 import { createDemoFamily, createEmptyTree, createStressTree } from './lib/generators'
 import { computeLayout } from './lib/treeLayout'
-import { exportTree, importTreeFile, loadTree, saveTree } from './lib/storage'
+import { historyReducer } from './lib/history'
+import { exportTree, importTreeFile, loadTree, persistStorage, saveTree } from './lib/storage'
 import {
   addChild,
   addChildToHusband,
@@ -39,7 +40,13 @@ interface PendingConfirm {
 }
 
 export default function App() {
-  const [root, setRoot] = useState<TreeNode>(() => loadTree() ?? createDemoFamily())
+  const [history, dispatch] = useReducer(historyReducer, undefined, () => ({
+    root: loadTree() ?? createDemoFamily(),
+    past: [],
+    future: [],
+  }))
+  const root = history.root
+  const commit = useCallback((update: (current: TreeNode) => TreeNode) => dispatch({ type: 'commit', update }), [])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [toast, setToast] = useState<Toast | null>(null)
   const [confirm, setConfirm] = useState<PendingConfirm | null>(null)
@@ -67,6 +74,10 @@ export default function App() {
   }, [layout])
 
   useEffect(() => {
+    void persistStorage()
+  }, [])
+
+  useEffect(() => {
     const timer = window.setTimeout(() => {
       if (!saveTree(root)) setToast({ id: Date.now(), text: 'تعذّر الحفظ التلقائي في المتصفح', error: true })
     }, 400)
@@ -84,7 +95,7 @@ export default function App() {
   const replaceTree = (next: TreeNode, message: string) => {
     pendingFitRef.current = 'animated'
     setSelectedId(null)
-    setRoot(next)
+    commit(() => next)
     notify(message)
   }
 
@@ -98,15 +109,40 @@ export default function App() {
     })
   }
 
-  const handleToggle = useCallback((id: string) => setRoot((r) => toggleCollapse(r, id)), [])
-  const handleRename = useCallback((id: string, name: string) => setRoot((r) => renameNode(r, id, name)), [])
+  const handleToggle = useCallback((id: string) => dispatch({ type: 'view', update: (r) => toggleCollapse(r, id) }), [])
+  const handleRename = useCallback((id: string, name: string) => commit((r) => renameNode(r, id, name)), [commit])
+
+  const canUndo = history.past.length > 0
+  const canRedo = history.future.length > 0
+  const undo = useCallback(() => {
+    dispatch({ type: 'undo' })
+    setSelectedId(null)
+  }, [])
+  const redo = useCallback(() => {
+    dispatch({ type: 'redo' })
+    setSelectedId(null)
+  }, [])
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      // Let the browser's own undo handle text being typed.
+      const el = document.activeElement
+      if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) return
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 'z') return
+      e.preventDefault()
+      if (e.shiftKey) redo()
+      else undo()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [undo, redo])
 
   const focusPerson = (id: string) => {
     const hidden = ancestorIds(index, id).filter((a) => index.get(a)?.node.collapsed)
     setSelectedId(id)
     if (hidden.length) {
       pendingFocusRef.current = id
-      setRoot((r) => expandNodes(r, hidden))
+      dispatch({ type: 'view', update: (r) => expandNodes(r, hidden) })
     } else {
       canvasRef.current?.focusNode(id)
     }
@@ -115,7 +151,7 @@ export default function App() {
   const handleAddWife = (husbandId: string) => {
     const result = addWife(root, husbandId, 'زوجة جديدة')
     if (!result) return notify('لا يمكن إضافة زوجة (الحد الأقصى 4)', true)
-    setRoot(result.root)
+    commit(() => result.root)
     setSelectedId(result.id)
   }
 
@@ -126,13 +162,13 @@ export default function App() {
     const result =
       parent?.type === 'member' ? addChildToHusband(root, parentId, gender, name) : addChild(root, parentId, gender, name)
     if (!result) return notify('تم بلوغ الحد الأقصى للأجيال (15)', true)
-    setRoot(result.root)
+    commit(() => result.root)
     setSelectedId(result.id)
   }
 
   const handleDelete = (id: string) => {
     const name = index.get(id)?.node.name
-    setRoot((r) => deleteNode(r, id))
+    commit((r) => deleteNode(r, id))
     setSelectedId(null)
     notify(`تم حذف «${name}»`)
   }
@@ -151,6 +187,10 @@ export default function App() {
       <Toolbar
         index={index}
         onSearchPick={focusPerson}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        onUndo={undo}
+        onRedo={redo}
         onStress={() => askReplace('شجرة اختبار 1500 شخص', () => createStressTree(Date.now()), (n) => `تم توليد ${n} شخص عبر 15 جيلاً`)}
         onDemo={() => askReplace('عائلة تجريبية صغيرة', createDemoFamily, (n) => `تم تحميل عائلة تجريبية (${n} شخص)`)}
         onReset={() => askReplace('شجرة جديدة فارغة', createEmptyTree, () => 'تم إنشاء شجرة جديدة')}
@@ -197,7 +237,7 @@ export default function App() {
             index={index}
             onClose={() => setSelectedId(null)}
             onRename={handleRename}
-            onNameMother={(id, name) => setRoot((r) => nameUnknownMother(r, id, name))}
+            onNameMother={(id, name) => commit((r) => nameUnknownMother(r, id, name))}
             onAddWife={handleAddWife}
             onAddChild={handleAddChild}
             onDelete={handleDelete}
