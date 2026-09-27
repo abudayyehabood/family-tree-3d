@@ -109,6 +109,8 @@ export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onR
   const lastCullRef = useRef(0)
   const actionsRef = useRef<HTMLDivElement>(null)
   const selectedRef = useRef(selectedId)
+  /** True while the camera is still the automatic whole-tree fit; cleared once the user pans or zooms. */
+  const autoFitRef = useRef(true)
 
   /** Pins the quick-action bar under the selected card (runs on every pan/zoom frame, no re-render). */
   const placeActions = useCallback((t: ZoomTransform) => {
@@ -168,6 +170,7 @@ export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onR
       .scaleExtent([MIN_SCALE, MAX_SCALE])
       .on('start', (event: D3ZoomEvent<SVGSVGElement, unknown>) => {
         if (event.sourceEvent) {
+          autoFitRef.current = false
           cancelAnimation()
           setInlineEdit(null)
         }
@@ -190,12 +193,6 @@ export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onR
       zoomRef.current = null
     }
   }, [cancelAnimation, updateViewBox, placeActions])
-
-  useEffect(() => {
-    const onResize = () => updateViewBox(transformRef.current)
-    window.addEventListener('resize', onResize)
-    return () => window.removeEventListener('resize', onResize)
-  }, [updateViewBox])
 
   /** Moves the camera so world point (cx, cy) sits at the viewport centre with scale k. */
   const moveCamera = useCallback(
@@ -236,6 +233,7 @@ export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onR
     (animate = true) => {
       const svg = svgRef.current
       if (!svg) return
+      autoFitRef.current = true
       const { bounds, trunkScale } = layoutRef.current
       const left = Math.min(bounds.minX, -TRUNK_HALF_WIDTH * trunkScale)
       const right = Math.max(bounds.maxX, TRUNK_HALF_WIDTH * trunkScale)
@@ -247,6 +245,41 @@ export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onR
     },
     [moveCamera],
   )
+
+  /**
+   * A viewport change - rotating a phone, the iOS keyboard, a resized window - used to leave the
+   * camera exactly where it was, which on a rotation put the whole tree off-screen. While the
+   * camera is still the automatic fit, re-fit it; once the user has framed something themselves,
+   * keep their scale and whatever they had centred.
+   */
+  useEffect(() => {
+    let timer = 0
+    let prev = { w: svgRef.current?.clientWidth ?? 0, h: svgRef.current?.clientHeight ?? 0 }
+    const onResize = () => {
+      window.clearTimeout(timer)
+      timer = window.setTimeout(() => {
+        timer = 0
+        const svg = svgRef.current
+        if (!svg) return
+        // The soft keyboard fires resize too: never move the ground under someone who is typing.
+        const active = document.activeElement
+        if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) {
+          updateViewBox(transformRef.current)
+        } else if (autoFitRef.current) {
+          centerTree(false)
+        } else {
+          const t = transformRef.current
+          moveCamera((prev.w / 2 - t.x) / t.k, (prev.h / 2 - t.y) / t.k, t.k, false)
+        }
+        prev = { w: svg.clientWidth, h: svg.clientHeight }
+      }, 150)
+    }
+    window.addEventListener('resize', onResize)
+    return () => {
+      window.clearTimeout(timer)
+      window.removeEventListener('resize', onResize)
+    }
+  }, [centerTree, moveCamera, updateViewBox])
 
   const zoomBy = (factor: number) => {
     const svg = svgRef.current
