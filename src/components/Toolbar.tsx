@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { ComponentType } from 'react'
-import { Download, FilePlus2, MoreHorizontal, Redo2, Search, TreeDeciduous, Undo2, Upload, Users, Zap } from 'lucide-react'
+import { ChevronsUpDown, Download, FilePlus2, MoreHorizontal, Redo2, Search, TreeDeciduous, Undo2, Upload, Users, Zap } from 'lucide-react'
 import type { TreeIndex } from '../lib/tree'
 import SearchBar from './SearchBar'
 
@@ -12,6 +12,7 @@ interface ToolbarProps {
   onUndo: () => void
   onRedo: () => void
   onStress: () => void
+  onExpandAll: () => void
   onDemo: () => void
   onReset: () => void
   onExport: () => void
@@ -79,7 +80,7 @@ function PillButton({
   )
 }
 
-export default function Toolbar({ index, onSearchPick, canUndo, canRedo, onUndo, onRedo, onStress, onDemo, onReset, onExport, onImport }: ToolbarProps) {
+export default function Toolbar({ index, onSearchPick, canUndo, canRedo, onUndo, onRedo, onStress, onExpandAll, onDemo, onReset, onExport, onImport }: ToolbarProps) {
   const [searchOpen, setSearchOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
 
@@ -104,6 +105,7 @@ export default function Toolbar({ index, onSearchPick, canUndo, canRedo, onUndo,
 
   const tools: Tool[] = [
     { icon: Zap, label: 'توليد 1500 شخص (15 جيل)', onClick: onStress, accent: true, desktopOnly: true },
+    { icon: ChevronsUpDown, label: 'فتح كل الفروع', onClick: onExpandAll },
     { icon: Users, label: 'عائلة تجريبية صغيرة', onClick: onDemo },
     { icon: FilePlus2, label: 'شجرة جديدة فارغة', onClick: onReset },
     { icon: Download, label: 'تصدير JSON', onClick: onExport },

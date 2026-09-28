@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Baby, Heart, Pencil, Trash2, UserPlus } from 'lucide-react'
+import { Baby, GitBranch, Heart, Pencil, Trash2, UserPlus } from 'lucide-react'
 import { MAX_GENERATION, MAX_WIVES } from '../model'
 import type { Gender, TreeNode } from '../model'
 import { wifeCount } from '../lib/tree'
@@ -11,6 +11,8 @@ interface NodeActionsProps {
   onAddWife: (husbandId: string) => void
   onAddChild: (parentId: string, gender: Gender) => void
   onDelete: (id: string) => void
+  /** Shows only this person's branch (undefined when not offered). */
+  onFocusBranch?: (id: string) => void
 }
 
 function ActionChip({
@@ -40,7 +42,7 @@ function ActionChip({
 }
 
 /** Quick actions shown right under the selected card: edit name, add wife/son/daughter, delete. */
-export default function NodeActions({ node, isRoot, onEditName, onAddWife, onAddChild, onDelete }: NodeActionsProps) {
+export default function NodeActions({ node, isRoot, onEditName, onAddWife, onAddChild, onDelete, onFocusBranch }: NodeActionsProps) {
   const isWife = node.type === 'wife'
   const isMale = node.type === 'member' && node.gender === 'male'
   // Children go under the wife herself, the husband's first named wife, or (no wife yet) straight
@@ -95,6 +97,12 @@ export default function NodeActions({ node, isRoot, onEditName, onAddWife, onAdd
         <Baby className="size-3.5" />
         بنت
       </ActionChip>
+      {onFocusBranch && (
+        <ActionChip label="عرض هذا الفرع فقط" onClick={() => onFocusBranch(node.id)} tone="bg-lime-200 text-green-950 hover:bg-lime-100">
+          <GitBranch className="size-3.5" />
+          الفرع
+        </ActionChip>
+      )}
       <ActionChip
         label={isRoot ? 'لا يمكن حذف المؤسس' : 'حذف'}
         onClick={() => onDelete(node.id)}

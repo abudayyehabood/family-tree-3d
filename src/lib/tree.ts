@@ -65,6 +65,34 @@ export function renameNode(root: TreeNode, id: string, name: string): TreeNode {
   return updateNode(root, id, (node) => (node.name === name ? node : { ...node, name, unknown: undefined }))
 }
 
+export interface PersonDetails {
+  born?: number
+  died?: number
+  husband?: string
+}
+
+/** Sets birth/death years and (daughters only) the husband's name; empty values clear the field. */
+export function updateDetails(root: TreeNode, id: string, details: PersonDetails): TreeNode {
+  return updateNode(root, id, (node) => {
+    const husband = node.type === 'member' && node.gender === 'female' ? details.husband?.trim() || undefined : undefined
+    return { ...node, born: details.born, died: details.died, husband }
+  })
+}
+
+/** "1950 – 2010", "مواليد 1950" or "توفي 2010"; empty when neither year is known. */
+export function yearsLabel(born?: number, died?: number): string {
+  if (born && died) return `${born} – ${died}`
+  if (born) return `مواليد ${born}`
+  if (died) return `توفي ${died}`
+  return ''
+}
+
+/** Accepts a plausible year (1–2100), otherwise undefined. */
+export function parseYear(value: unknown): number | undefined {
+  const n = typeof value === 'string' ? Number(value.trim()) : value
+  return typeof n === 'number' && Number.isInteger(n) && n > 0 && n <= 2100 ? n : undefined
+}
+
 /** Gives a man's unknown mother a name, turning her into a regular wife (needs a free wife slot). */
 export function nameUnknownMother(root: TreeNode, husbandId: string, name: string): TreeNode {
   return updateNode(root, husbandId, (husband) => {
@@ -77,6 +105,10 @@ export function toggleCollapse(root: TreeNode, id: string): TreeNode {
   return updateNode(root, id, (node) =>
     node.children.length ? { ...node, collapsed: !node.collapsed } : node,
   )
+}
+
+export function expandAll(root: TreeNode): TreeNode {
+  return transform(root, (node) => (node.collapsed ? { ...node, collapsed: false } : node))
 }
 
 export function expandNodes(root: TreeNode, ids: Iterable<string>): TreeNode {
@@ -228,6 +260,9 @@ export function validateTree(input: unknown): TreeNode {
       generation: expectedGen,
       collapsed: r.collapsed === true && children.length > 0 ? true : undefined,
       unknown: expectedType === 'wife' && r.unknown === true ? true : undefined,
+      born: parseYear(r.born),
+      died: parseYear(r.died),
+      husband: expectedType === 'member' && gender === 'female' && typeof r.husband === 'string' && r.husband.trim() ? r.husband.trim() : undefined,
       children,
     }
   }

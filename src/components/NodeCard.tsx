@@ -1,5 +1,6 @@
 import { memo } from 'react'
 import type { Gender, NodeType } from '../model'
+import { yearsLabel } from '../lib/tree'
 import { badgeBox, MEMBER_H, MEMBER_W, WIFE_H, WIFE_W } from '../lib/treeLayout'
 
 interface NodeCardProps {
@@ -8,6 +9,9 @@ interface NodeCardProps {
   gender: Gender
   name: string
   generation: number
+  born?: number
+  died?: number
+  husband?: string
   x: number
   y: number
   isRoot: boolean
@@ -63,7 +67,8 @@ function ToggleBadge({ type, collapsed, hiddenCount }: { type: NodeType; collaps
 }
 
 function NodeCard(props: NodeCardProps) {
-  const { id, type, gender, name, generation, x, y, isRoot, collapsed, childCount, hiddenCount, selected } = props
+  const { id, type, gender, name, generation, born, died, husband, x, y, isRoot, collapsed, childCount, hiddenCount, selected } = props
+  const years = yearsLabel(born, died)
 
   if (type === 'wife') {
     return (
@@ -81,9 +86,14 @@ function NodeCard(props: NodeCardProps) {
             <circle r={1.6} fill="#fde047" />
           </g>
         </g>
-        <text x={-6} y={5.5} textAnchor="middle" fontSize={15} fontWeight={800} fill="#3a1d04">
+        <text x={-6} y={years ? 0 : 5.5} textAnchor="middle" fontSize={years ? 14 : 15} fontWeight={800} fill="#3a1d04">
           {truncate(name, 10)}
         </text>
+        {years && (
+          <text x={-6} y={12.5} textAnchor="middle" fontSize={9.5} fontWeight={700} fill="#7c2d12">
+            {years}
+          </text>
+        )}
         {childCount > 0 && (
           <ToggleBadge type="wife" collapsed={collapsed} hiddenCount={hiddenCount} />
         )}
@@ -94,6 +104,7 @@ function NodeCard(props: NodeCardProps) {
   const female = gender === 'female'
   const fill = isRoot ? 'url(#cardFounder)' : female ? 'url(#cardFemale)' : 'url(#cardMale)'
   const textColor = female && !isRoot ? '#4a0f2a' : '#ffffff'
+  const subline = [female && husband ? `زوجها ${husband}` : '', years].filter(Boolean).join(' · ')
 
   return (
     <g className="node-card" data-node-id={id} transform={`translate(${x},${y})`}>
@@ -103,9 +114,9 @@ function NodeCard(props: NodeCardProps) {
       <path d={`M${-MW + 10},${MH - 8} Q0,${MH - 2} ${MW - 10},${-MH + 8}`} fill="none" stroke="#ffffff" strokeOpacity={0.16} strokeWidth={2} />
       <text
         x={female ? 0 : -10}
-        y={6}
+        y={subline ? -1 : 6}
         textAnchor="middle"
-        fontSize={17}
+        fontSize={subline ? 15 : 17}
         fontWeight={800}
         fill={textColor}
         stroke={female && !isRoot ? '#ffffff' : '#0b2410'}
@@ -116,6 +127,11 @@ function NodeCard(props: NodeCardProps) {
       >
         {truncate(name, female ? 12 : 10)}
       </text>
+      {subline && (
+        <text x={female ? 0 : -10} y={14.5} textAnchor="middle" fontSize={10} fontWeight={700} fill={female && !isRoot ? '#831843' : '#ecfccb'}>
+          {truncate(subline, female ? 24 : 18)}
+        </text>
+      )}
       {isRoot ? (
         <g transform={`translate(0,${MH + 2})`}>
           <rect x={-30} y={-9} width={60} height={18} rx={9} fill="#7c2d12" stroke="#f2c14e" strokeWidth={1.5} />

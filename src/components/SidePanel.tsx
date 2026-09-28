@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
-import { Baby, Check, Crown, Heart, Save, Trash2, User, UserPlus, X } from 'lucide-react'
+import { Baby, Check, Crown, GitBranch, Heart, Save, Trash2, User, UserPlus, X } from 'lucide-react'
 import { MAX_GENERATION, MAX_WIVES } from '../model'
 import type { Gender, TreeNode } from '../model'
-import { wifeCount } from '../lib/tree'
-import type { TreeIndex } from '../lib/tree'
+import { parseYear, wifeCount } from '../lib/tree'
+import type { PersonDetails, TreeIndex } from '../lib/tree'
 
 const UNKNOWN = '__unknown__'
 
@@ -17,6 +17,62 @@ interface SidePanelProps {
   onAddWife: (husbandId: string) => void
   onAddChild: (parentId: string, gender: Gender) => void
   onDelete: (id: string) => void
+  onSaveDetails: (id: string, details: PersonDetails) => void
+  /** Shows only this person's branch (undefined when not offered). */
+  onFocusBranch?: (id: string) => void
+}
+
+const yearText = (y?: number) => (y ? String(y) : '')
+
+/**
+ * Birth/death years for everyone, plus the husband's name for daughters (a name tag only; the tree
+ * stays patrilineal). One compact row, like the rest of the strip.
+ */
+function DetailsForm({ node, onSave }: { node: TreeNode; onSave: (details: PersonDetails) => void }) {
+  const isDaughter = node.type === 'member' && node.gender === 'female'
+  const [born, setBorn] = useState(yearText(node.born))
+  const [died, setDied] = useState(yearText(node.died))
+  const [husband, setHusband] = useState(node.husband ?? '')
+
+  const bornYear = parseYear(born)
+  const diedYear = parseYear(died)
+  const error =
+    (born.trim() && !bornYear) || (died.trim() && !diedYear)
+      ? 'اكتب السنة بالأرقام، مثل 1950'
+      : bornYear && diedYear && diedYear < bornYear
+        ? 'سنة الوفاة قبل سنة الميلاد'
+        : null
+  const dirty = born.trim() !== yearText(node.born) || died.trim() !== yearText(node.died) || (isDaughter && husband.trim() !== (node.husband ?? ''))
+  const input =
+    'h-7 min-w-0 rounded-md border border-amber-900/25 bg-white px-1.5 text-base leading-none font-bold text-stone-900 outline-none focus:ring-2 focus:ring-green-300 sm:h-9 sm:rounded-lg sm:px-2 sm:text-sm'
+
+  return (
+    <form
+      className="basis-full space-y-1 sm:basis-auto"
+      onSubmit={(e) => {
+        e.preventDefault()
+        if (!error && dirty) onSave({ born: bornYear, died: diedYear, husband: isDaughter ? husband : undefined })
+      }}
+    >
+      <div className="flex gap-1 sm:gap-1.5">
+        {isDaughter && (
+          <input value={husband} onChange={(e) => setHusband(e.target.value)} aria-label="اسم الزوج" placeholder="اسم الزوج" autoComplete="off" className={`flex-[2] ${input}`} />
+        )}
+        <input value={born} onChange={(e) => setBorn(e.target.value)} aria-label="سنة الميلاد" placeholder="ميلاد" inputMode="numeric" dir="ltr" className={`w-0 flex-1 text-center ${input}`} />
+        <input value={died} onChange={(e) => setDied(e.target.value)} aria-label="سنة الوفاة" placeholder="وفاة" inputMode="numeric" dir="ltr" className={`w-0 flex-1 text-center ${input}`} />
+        <button
+          type="submit"
+          disabled={!dirty || !!error}
+          aria-label="حفظ التفاصيل"
+          title="حفظ التفاصيل"
+          className="grid size-7 shrink-0 place-items-center rounded-md bg-green-700 text-white shadow transition hover:bg-green-600 disabled:bg-stone-200 disabled:text-stone-400 sm:size-9 sm:rounded-lg"
+        >
+          {dirty ? <Save className="size-3.5 sm:size-4" /> : <Check className="size-3.5 sm:size-4" />}
+        </button>
+      </div>
+      {error && <p className="text-xs font-semibold text-red-700">{error}</p>}
+    </form>
+  )
 }
 
 /** A colour-coded icon square on phones; icon plus label in a two-column grid from `sm` up. */
@@ -32,7 +88,7 @@ function ActionButton({
   onClick: () => void
   disabled?: boolean
   title: string
-  tone: 'green' | 'pink' | 'amber' | 'red'
+  tone: 'green' | 'pink' | 'amber' | 'red' | 'lime'
   wide?: boolean
 }) {
   const tones = {
@@ -40,6 +96,7 @@ function ActionButton({
     pink: 'bg-pink-700 text-white hover:bg-pink-600',
     amber: 'bg-amber-500 text-amber-950 hover:bg-amber-400',
     red: 'border border-red-300 bg-red-50 text-red-700 hover:bg-red-100',
+    lime: 'bg-lime-200 text-green-950 hover:bg-lime-100',
   }
   return (
     <button
@@ -66,7 +123,18 @@ function ActionButton({
  * picker, delete confirmation) wrap underneath only when they apply. From `sm` up it becomes the
  * familiar labelled side panel.
  */
-export default function SidePanel({ node, index, onClose, onRename, onNameMother, onAddWife, onAddChild, onDelete }: SidePanelProps) {
+export default function SidePanel({
+  node,
+  index,
+  onClose,
+  onRename,
+  onNameMother,
+  onAddWife,
+  onAddChild,
+  onDelete,
+  onSaveDetails,
+  onFocusBranch,
+}: SidePanelProps) {
   const [draft, setDraft] = useState(node.name)
   const [savedName, setSavedName] = useState(node.name)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -209,7 +277,13 @@ export default function SidePanel({ node, index, onClose, onRename, onNameMother
               <span className="hidden sm:inline">زوجة</span>
             </ActionButton>
           )}
-          <ActionButton tone="red" wide={!isMale} onClick={() => setConfirmDelete(true)} disabled={isRoot} title={isRoot ? 'لا يمكن حذف المؤسس' : 'حذف'}>
+          {onFocusBranch && (
+            <ActionButton tone="lime" onClick={() => onFocusBranch(node.id)} title="عرض هذا الفرع فقط">
+              <GitBranch className="size-3.5 sm:size-4" />
+              <span className="hidden sm:inline">الفرع</span>
+            </ActionButton>
+          )}
+          <ActionButton tone="red" wide={(Number(isMale) + Number(!!onFocusBranch)) % 2 === 0} onClick={() => setConfirmDelete(true)} disabled={isRoot} title={isRoot ? 'لا يمكن حذف المؤسس' : 'حذف'}>
             <Trash2 className="size-3.5 sm:size-4" />
             <span className="hidden sm:inline">حذف</span>
           </ActionButton>
@@ -273,6 +347,8 @@ export default function SidePanel({ node, index, onClose, onRename, onNameMother
             </button>
           </form>
         )}
+
+        <DetailsForm node={node} onSave={(details) => onSaveDetails(node.id, details)} />
       </div>
     </aside>
   )

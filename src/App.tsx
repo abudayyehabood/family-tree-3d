@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
+import { ArrowUp, TreeDeciduous } from 'lucide-react'
 import type { Gender, TreeNode } from './model'
 import { createDemoFamily, createEmptyTree, createStressTree } from './lib/generators'
 import { computeLayout } from './lib/treeLayout'
@@ -12,11 +13,13 @@ import {
   buildIndex,
   collapseFromGeneration,
   deleteNode,
+  expandAll,
   expandNodes,
   nameUnknownMother,
   maxGeneration,
   renameNode,
   toggleCollapse,
+  updateDetails,
 } from './lib/tree'
 import ConfirmDialog from './components/ConfirmDialog'
 import NodeActions from './components/NodeActions'
@@ -25,8 +28,11 @@ import Toolbar from './components/Toolbar'
 import TreeCanvas from './components/TreeCanvas'
 import type { TreeCanvasHandle } from './components/TreeCanvas'
 
-/** Generated trees open with generation 4+ collapsed so the first view is a readable crown. */
-const COLLAPSE_FROM_GENERATION = 4
+/**
+ * Generated trees open with generation 4+ collapsed (3+ on phones) so the first view is a readable
+ * crown.
+ */
+const collapseFromGenerationForScreen = () => (window.innerWidth < 640 ? 3 : 4)
 
 interface Toast {
   id: number
@@ -50,6 +56,8 @@ export default function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [toast, setToast] = useState<Toast | null>(null)
   const [confirm, setConfirm] = useState<PendingConfirm | null>(null)
+  /** Branch-focus mode: only this person's subtree is laid out (null = whole tree). */
+  const [branchRootId, setBranchRootId] = useState<string | null>(null)
 
   const canvasRef = useRef<TreeCanvasHandle>(null)
   // Camera work that must wait until the next layout has been rendered.
@@ -57,7 +65,11 @@ export default function App() {
   const pendingFocusRef = useRef<string | null>(null)
 
   const index = useMemo(() => buildIndex(root), [root])
-  const layout = useMemo(() => computeLayout(root, index), [root, index])
+  // A deleted branch root simply falls back to the whole tree.
+  const viewRoot = (branchRootId && index.get(branchRootId)?.node) || root
+  const layout = useMemo(() => computeLayout(viewRoot, index), [viewRoot, index])
+  /** The father of the focused branch (its parent is a wife, whose parent is the father). */
+  const branchFatherId = viewRoot !== root ? ancestorIds(index, viewRoot.id).find((a) => index.get(a)?.node.type === 'member') : undefined
   const generations = useMemo(() => maxGeneration(index), [index])
   const people = useMemo(() => [...index.values()].filter((e) => !e.node.unknown).length, [index])
   const selectedNode = selectedId ? index.get(selectedId)?.node : undefined
@@ -95,6 +107,7 @@ export default function App() {
   const replaceTree = (next: TreeNode, message: string) => {
     pendingFitRef.current = 'animated'
     setSelectedId(null)
+    setBranchRootId(null)
     commit(() => next)
     notify(message)
   }
@@ -103,7 +116,7 @@ export default function App() {
     setConfirm({
       message: `سيتم استبدال الشجرة الحالية بـ«${label}». يمكنك تصدير الشجرة الحالية أولاً إن أردت الاحتفاظ بها.`,
       action: () => {
-        const next = collapseFromGeneration(build(), COLLAPSE_FROM_GENERATION)
+        const next = collapseFromGeneration(build(), collapseFromGenerationForScreen())
         replaceTree(next, message(buildIndex(next).size))
       },
     })
@@ -137,7 +150,24 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [undo, redo])
 
+  /** Shows only `id`'s branch, or the whole tree when `id` is null. */
+  const showBranch = (id: string | null) => {
+    if ((id ?? root.id) === viewRoot.id) return
+    pendingFitRef.current = 'animated'
+    setBranchRootId(id === root.id ? null : id)
+    if (id) dispatch({ type: 'view', update: (r) => expandNodes(r, [id]) })
+  }
+
   const focusPerson = (id: string) => {
+    // A person outside the focused branch brings back the whole tree.
+    if (viewRoot !== root && id !== viewRoot.id && !ancestorIds(index, id).includes(viewRoot.id)) {
+      setBranchRootId(null)
+      const hidden = ancestorIds(index, id).filter((a) => index.get(a)?.node.collapsed)
+      setSelectedId(id)
+      pendingFocusRef.current = id
+      dispatch({ type: 'view', update: (r) => expandNodes(r, hidden) })
+      return
+    }
     const hidden = ancestorIds(index, id).filter((a) => index.get(a)?.node.collapsed)
     setSelectedId(id)
     if (hidden.length) {
@@ -147,6 +177,9 @@ export default function App() {
       canvasRef.current?.focusNode(id)
     }
   }
+
+  /** Any man with a family can become the root of the view (except the one already shown there). */
+  const canFocusBranch = (node: TreeNode) => node.type === 'member' && node.children.length > 0 && node.id !== viewRoot.id
 
   const handleAddWife = (husbandId: string) => {
     const result = addWife(root, husbandId, 'زوجة جديدة')
@@ -192,6 +225,10 @@ export default function App() {
         onUndo={undo}
         onRedo={redo}
         onStress={() => askReplace('شجرة اختبار 1500 شخص', () => createStressTree(Date.now()), (n) => `تم توليد ${n} شخص عبر 15 جيلاً`)}
+        onExpandAll={() => {
+          pendingFitRef.current = 'animated'
+          dispatch({ type: 'view', update: expandAll })
+        }}
         onDemo={() => askReplace('عائلة تجريبية صغيرة', createDemoFamily, (n) => `تم تحميل عائلة تجريبية (${n} شخص)`)}
         onReset={() => askReplace('شجرة جديدة فارغة', createEmptyTree, () => 'تم إنشاء شجرة جديدة')}
         onExport={() => {
@@ -217,6 +254,7 @@ export default function App() {
                 onEditName={(id) => canvasRef.current?.editName(id)}
                 onAddWife={handleAddWife}
                 onAddChild={handleAddChild}
+                onFocusBranch={canFocusBranch(selectedNode) ? showBranch : undefined}
                 onDelete={(id) =>
                   setConfirm({
                     message: `سيتم حذف «${index.get(id)?.node.name}»${
@@ -241,7 +279,34 @@ export default function App() {
             onAddWife={handleAddWife}
             onAddChild={handleAddChild}
             onDelete={handleDelete}
+            onSaveDetails={(id, details) => commit((r) => updateDetails(r, id, details))}
+            onFocusBranch={canFocusBranch(selectedNode) ? showBranch : undefined}
           />
+        )}
+
+        {viewRoot !== root && (
+          <div className="absolute top-1 left-1 z-20 flex max-w-[calc(100%-0.5rem)] items-center gap-1 rounded-full bg-[#3b2412]/95 p-0.5 text-xs text-amber-50 shadow-xl sm:top-3 sm:left-3 sm:gap-1.5 sm:p-1.5 sm:text-sm">
+            <span className="min-w-0 truncate px-2 font-bold">فرع «{viewRoot.name}»</span>
+            {branchFatherId && (
+              <button
+                type="button"
+                onClick={() => showBranch(branchFatherId)}
+                title="فرع الأب"
+                className="inline-flex h-6 shrink-0 items-center gap-1 rounded-full bg-white/10 px-2 font-semibold hover:bg-white/25 sm:h-9 sm:px-3"
+              >
+                <ArrowUp className="size-3 sm:size-4" />
+                الأب
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => showBranch(null)}
+              className="inline-flex h-6 shrink-0 items-center gap-1 rounded-full bg-amber-500 px-2 font-bold text-amber-950 hover:bg-amber-400 sm:h-9 sm:gap-1.5 sm:px-3"
+            >
+              <TreeDeciduous className="size-3 sm:size-4" />
+              الشجرة كاملة
+            </button>
+          </div>
         )}
 
         <div className="pointer-events-none absolute bottom-5 left-1/2 z-10 hidden -translate-x-1/2 rounded-full bg-white/80 px-4 py-1.5 text-xs font-semibold whitespace-nowrap text-stone-700 shadow backdrop-blur sm:block">

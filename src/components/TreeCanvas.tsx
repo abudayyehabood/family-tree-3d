@@ -11,7 +11,8 @@ import Foliage from './Foliage'
 import NodeCard from './NodeCard'
 import Trunk, { TRUNK_DEPTH, TRUNK_HALF_WIDTH } from './Trunk'
 
-const MIN_SCALE = 0.02
+/** Low enough to fit a fully expanded 1,500-person tree on a phone. */
+const MIN_SCALE = 0.005
 const MAX_SCALE = 3
 const ZOOM_STEP = 1.35
 /** Only elements within the viewport plus this many screen-widths of margin are mounted. */
@@ -77,6 +78,9 @@ const NodesLayer = memo(function NodesLayer({ nodes, selectedId }: NodesLayerPro
           gender={n.gender}
           name={n.name}
           generation={n.generation}
+          born={n.born}
+          died={n.died}
+          husband={n.husband}
           x={n.x}
           y={n.y}
           isRoot={n.isRoot}
