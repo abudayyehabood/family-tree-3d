@@ -79,16 +79,28 @@ const COUSIN_PAD = 24
 
 const DEG = Math.PI / 180
 /**
- * The founder sits on the trunk top and generations fan out above him, up to 100° either side of
+ * The founder sits on the trunk top and generations fan out above him, up to 75° either side of
  * straight up. Rings are bent into a dome (full radius straight up, pulled in towards the flanks), so
  * the crown is round like an oak instead of a flat fan.
  */
-const MAX_THETA = 100 * DEG
+const MAX_THETA = 75 * DEG
 /** 1 = plain circles around the founder, 0 = circles through the founder. */
 const DOME = 0.7
 const dome = (theta: number) => DOME + (1 - DOME) * Math.cos(theta)
 /** Screen point at ring radius r and angle θ (0 = straight up, positive = to the right). */
 const toPoint = (r: number, theta: number): Point => [r * dome(theta) * Math.sin(theta), -r * dome(theta) * Math.cos(theta)]
+const unit = (x: number, y: number): Point => {
+  const len = Math.hypot(x, y) || 1
+  return [x / len, y / len]
+}
+/**
+ * Unit direction a limb grows in at a card: away from a point below the founder (`focus` units down).
+ * Limbs near the trunk then head upward whatever their angle, and only the outer crown fans out
+ * sideways, the way a real tree grows.
+ */
+const outward = ({ x, y }: { x: number; y: number }, focus: number): Point => unit(x, y - focus)
+/** How far below the founder limbs seem to grow from, as a fraction of the crown radius. */
+const FOCUS_DEPTH = 0.5
 /** A narrow tree is stretched to fill the fan, but never more than this (small families stay upright). */
 const MAX_STRETCH = 2
 /**
@@ -107,20 +119,33 @@ const RING_BUMP = 16
 const LANE_STEP = MEMBER_H + PAD_Y + 10
 const MAX_ATTEMPTS = 120
 
-/** Branch width: the trunk top for the founder, then this factor thinner every generation. */
+/** Branch width: the trunk top for the founder, then thinner every generation. */
 const TRUNK_TOP = 48
-const TAPER = 0.82
+/** Generations up to this one are the tree's main limbs: nearly as thick as the trunk. */
+const MAIN_LIMB_GENERATIONS = 5
+const MAIN_TAPER = 0.93
+/** Beyond the main limbs, each generation is this factor thinner. */
+const TAPER = 0.78
 const MIN_LIMB = 3
 /** A generation's ring sits at least this many of its limb widths beyond the one before. */
 const LIMB_LENGTH = 2.5
-/** Radial room a limb gets per unit of sideways travel, so a far-turning limb climbs instead of wrapping. */
-const TURN_SLOPE = 0.4
-/** Turns up to this angle sweep fine inside the normal gap between two rings. */
-const FREE_TURN = 40 * DEG
+/** Husband → wife is a fork rather than a limb: shorter, but still longer than it is thick. */
+const WIFE_LIMB_LENGTH = 1.3
+/**
+ * Radial room a limb gets per unit of sideways travel, so a limb that must reach far to the side climbs
+ * at a slant like a real branch instead of running flat along the ring.
+ */
+const TURN_SLOPE = 0.3
 /** …but never more than this per ring, or rings whose limbs all turn far would push the crown out without end. */
 const MAX_TURN_ROOM = 500
+/** How far along the limb its ends keep their heading (fraction of the limb's length). */
+const LIMB_BEND = 0.4
+/** A limb leaves its parent between "straight at the child" (0) and "straight outward" (large). */
+const LEAVE_UP = 0.6
+/** …and arrives heading outward, leaning this much towards where it came from. */
+const ARRIVE_LEAN = 0.35
 
-/** Points sampled along each branch's polar sweep. */
+/** Points sampled along each branch's centre-line. */
 const BRANCH_SAMPLES = 16
 
 export interface LayoutNode {
@@ -152,6 +177,8 @@ export interface LayoutLink {
   id: string
   d: string
   kind: 'wife' | 'child'
+  /** Centre-line of the branch, parent → child. */
+  spine: Point[]
   /** Bounding box of the branch (Bézier hull), used for viewport culling. */
   box: Box
 }
@@ -188,7 +215,11 @@ const cardW = (n: TreeNode) => (n.unknown ? 0 : 2 * cardHalf(n.type, !!n.husband
 const cardH = (n: TreeNode) => (n.unknown ? 0 : 2 * cardHalf(n.type, !!n.husband).hh)
 
 /** Width of every branch of one generation (the founder's equals the trunk top). */
-const limbWidth = (generation: number, trunkScale: number) => Math.max(MIN_LIMB, TRUNK_TOP * trunkScale * TAPER ** (generation - 1))
+const limbWidth = (generation: number, trunkScale: number) => {
+  const main = Math.min(generation, MAIN_LIMB_GENERATIONS) - 1
+  const twig = Math.max(0, generation - MAIN_LIMB_GENERATIONS)
+  return Math.max(MIN_LIMB, TRUNK_TOP * trunkScale * MAIN_TAPER ** main * TAPER ** twig)
+}
 
 function collides(a: Polar, b: Polar): boolean {
   return Math.abs(a.x - b.x) < (a.w + b.w) / 2 + PAD_X && Math.abs(a.y - b.y) < (a.h + b.h) / 2 + PAD_Y
@@ -298,7 +329,8 @@ export function computeLayout(data: TreeNode, index: TreeIndex): TreeLayout {
   const boost = new Map<string, number>()
   const ringOrder = levels.map((ring) => ring.filter((n) => !n.data.unknown).map((n) => n.data.id))
   /** Thick limbs need length to read as limbs rather than knots: a ring sits at least a few limb widths out. */
-  const limbStep = (d: number) => (d && step[d] === CHILD_STEP ? Math.max(CHILD_STEP, LIMB_LENGTH * limbWidth(levels[d][0].data.generation, trunkScale)) : step[d])
+  const limbStep = (d: number) =>
+    d ? Math.max(step[d], (step[d] === CHILD_STEP ? LIMB_LENGTH : WIFE_LIMB_LENGTH) * limbWidth(levels[d][0].data.generation, trunkScale)) : 0
   const placeRings = () => levels.forEach((_, d) => (radius[d] = d ? radius[d - 1] + laneSpread[d - 1] + limbStep(d) + extra[d] : 0))
   /** Radial distance between two rows at angle θ: stacked vertically near the top, side by side on the steep flanks. */
   const laneStep = (theta: number) =>
@@ -427,7 +459,10 @@ export function computeLayout(data: TreeNode, index: TreeIndex): TreeLayout {
       if (!from?.parent || n.data.unknown) continue
       const a = polar.get(from.data.id)!
       const b = polar.get(n.data.id)!
-      turnRoom[n.depth] = Math.max(turnRoom[n.depth], Math.min(MAX_TURN_ROOM, a.r * Math.max(0, Math.abs(b.theta - a.theta) - FREE_TURN) * TURN_SLOPE))
+      // How far the child sits to the side of the parent's outward heading.
+      const [ux, uy] = outward(a, outerRadius * FOCUS_DEPTH)
+      const sideways = Math.abs(ux * (b.y - a.y) - uy * (b.x - a.x))
+      turnRoom[n.depth] = Math.max(turnRoom[n.depth], Math.min(MAX_TURN_ROOM, sideways * TURN_SLOPE))
     }
     turnRoom.forEach((need, d) => {
       const room = limbStep(d) + extra[d]
@@ -449,16 +484,6 @@ export function computeLayout(data: TreeNode, index: TreeIndex): TreeLayout {
     }
     for (const [d, need] of clash) extra[d] += need
     if (!crowded.length && !clash.size && !sameRing.length && !moved) break
-  }
-
-  /** Innermost and outermost card radius of every ring. */
-  const ringInner: number[] = []
-  const ringOuter: number[] = []
-  for (const n of all) {
-    const p = polar.get(n.data.id)!
-    if (!p.w && n.parent) continue
-    ringInner[n.depth] = Math.min(ringInner[n.depth] ?? Infinity, p.r)
-    ringOuter[n.depth] = Math.max(ringOuter[n.depth] ?? -Infinity, p.r)
   }
 
   const nodes: LayoutNode[] = []
@@ -502,27 +527,26 @@ export function computeLayout(data: TreeNode, index: TreeIndex): TreeLayout {
     // The founder's limbs leave the trunk top straight towards their child.
     const pp = from.parent ? polar.get(from.data.id)! : { ...polar.get(from.data.id)!, theta: p.theta }
     /*
-     * The branch is swept in polar space: it leaves the parent along its radius, and the angle eases
-     * from the parent's to the child's only inside the gap between the two rings. Every branch
-     * across one gap turns over the same radii, so neighbouring branches keep their order and never
-     * cross.
+     * One smooth limb: it leaves the parent heading outward (the way the parent's own limb grew) and
+     * reaches the child from below, so it never wraps along a ring. The layout gives far-reaching limbs
+     * extra height (TURN_SLOPE), so they climb at a slant instead of running flat.
      */
-    const gapStart = Math.min(ringOuter[from.depth], p.r)
-    const gapEnd = Math.max(gapStart + 1, ringInner[n.depth])
+    const len = Math.hypot(p.x - pp.x, p.y - pp.y) || 1
+    const [dx, dy] = [(p.x - pp.x) / len, (p.y - pp.y) / len]
+    const [ox, oy] = outward(pp, outerRadius * FOCUS_DEPTH)
+    const [ex, ey] = outward(p, outerRadius * FOCUS_DEPTH)
+    // It leaves already leaning towards the child and bends upward once near the end: a single bow, not an S.
+    const [ax, ay] = unit(dx + ox * LEAVE_UP, dy + oy * LEAVE_UP)
+    const [bx, by] = unit(ex + dx * ARRIVE_LEAN, ey + dy * ARRIVE_LEAN)
+    const c1: Point = [pp.x + ax * len * LIMB_BEND, pp.y + ay * len * LIMB_BEND]
+    const c2: Point = [p.x - bx * len * LIMB_BEND, p.y - by * len * LIMB_BEND]
     const centre: Point[] = []
-    // A sweep near the founder would wrap round him like an arch: his and his wives' limbs run straight,
-    // and limbs that start close in (compared with where they end) straighten partly, like real limbs.
-    const straight = from.depth <= 1 ? 1 : Math.min(1, Math.max(0, (1 - pp.r / p.r) * 1.5 - 0.2))
-    const add = (r: number) => {
-      const u = Math.min(1, Math.max(0, (r - gapStart) / (gapEnd - gapStart)))
-      const theta = pp.theta + (p.theta - pp.theta) * (u * u * (3 - 2 * u))
-      const [sx, sy] = toPoint(r, theta)
-      const t = (r - pp.r) / (p.r - pp.r || 1)
-      centre.push([sx + (pp.x + (p.x - pp.x) * t - sx) * straight, sy + (pp.y + (p.y - pp.y) * t - sy) * straight])
+    for (let i = 0; i <= BRANCH_SAMPLES; i++) {
+      const t = i / BRANCH_SAMPLES
+      const mt = 1 - t
+      const [a, b, c, e] = [mt * mt * mt, 3 * mt * mt * t, 3 * mt * t * t, t * t * t]
+      centre.push([a * pp.x + b * c1[0] + c * c2[0] + e * p.x, a * pp.y + b * c1[1] + c * c2[1] + e * p.y])
     }
-    if (pp.r < gapStart) add(pp.r)
-    for (let i = 0; i <= BRANCH_SAMPLES; i++) add(gapStart + ((gapEnd - gapStart) * i) / BRANCH_SAMPLES)
-    if (p.r > gapEnd) add(p.r)
 
     // Harmonic widths: a branch starts at its parent's generation width and ends at the child's.
     const w0 = limbWidth(from.data.generation, trunkScale)
@@ -534,6 +558,7 @@ export function computeLayout(data: TreeNode, index: TreeIndex): TreeLayout {
       id: d.id,
       d: taperedPolylinePath(centre, w0, w1),
       kind: d.type === 'wife' ? 'wife' : 'child',
+      spine: centre,
       box: {
         minX: Math.min(...xs) - pad,
         minY: Math.min(...ys) - pad,
