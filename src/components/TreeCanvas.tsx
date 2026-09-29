@@ -6,7 +6,7 @@ import type { D3ZoomEvent, ZoomBehavior, ZoomTransform } from 'd3-zoom'
 import { Crosshair, Minus, Plus } from 'lucide-react'
 import { cardHalf, hitTest } from '../lib/treeLayout'
 import type { Box, LayoutLink, LayoutNode, TreeLayout } from '../lib/treeLayout'
-import Branch from './Branch'
+import Branch, { WOOD } from './Branch'
 import Foliage from './Foliage'
 import NodeCard from './NodeCard'
 import Trunk, { TRUNK_DEPTH, TRUNK_HALF_WIDTH } from './Trunk'
@@ -59,7 +59,11 @@ const BranchesLayer = memo(function BranchesLayer({ links }: { links: LayoutLink
   return (
     <g className="branches-layer">
       {links.map((l) => (
-        <Branch key={l.id} d={l.d} kind={l.kind} />
+        <Branch key={l.id} d={l.d} />
+      ))}
+      {/* Knots over every fork, drawn after the branches so they hide the seams where limbs meet. */}
+      {links.map(({ id, knot: [x, y, r] }) => (
+        <circle key={id} cx={x} cy={y} r={r} fill={WOOD} />
       ))}
     </g>
   )
@@ -416,15 +420,6 @@ export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onR
           <linearGradient id="hill" x1="0" x2="0" y1="0" y2="1">
             <stop offset="0" stopColor="#8cc063" />
             <stop offset="1" stopColor="#4f8a2f" />
-          </linearGradient>
-          <linearGradient id="branchChild" x1="0" x2="0" y1="1" y2="0">
-            <stop offset="0" stopColor="#4a2a14" />
-            <stop offset="0.55" stopColor="#6b4423" />
-            <stop offset="1" stopColor="#7b7236" />
-          </linearGradient>
-          <linearGradient id="branchWife" x1="0" x2="0" y1="1" y2="0">
-            <stop offset="0" stopColor="#6b4423" />
-            <stop offset="1" stopColor="#b8873a" />
           </linearGradient>
           <linearGradient id="cardMale" x1="0" x2="0" y1="0" y2="1">
             <stop offset="0" stopColor="#1f7a4d" />

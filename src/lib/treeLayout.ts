@@ -119,13 +119,9 @@ const RING_BUMP = 16
 const LANE_STEP = MEMBER_H + PAD_Y + 10
 const MAX_ATTEMPTS = 120
 
-/** Branch width: the trunk top for the founder, then thinner every generation. */
+/** Branch width: the trunk top for the founder, then this factor thinner every generation. */
 const TRUNK_TOP = 48
-/** Generations up to this one are the tree's main limbs: nearly as thick as the trunk. */
-const MAIN_LIMB_GENERATIONS = 5
-const MAIN_TAPER = 0.93
-/** Beyond the main limbs, each generation is this factor thinner. */
-const TAPER = 0.78
+const TAPER = 0.8
 const MIN_LIMB = 3
 /** A generation's ring sits at least this many of its limb widths beyond the one before. */
 const LIMB_LENGTH = 2.5
@@ -176,7 +172,8 @@ export interface Box {
 export interface LayoutLink {
   id: string
   d: string
-  kind: 'wife' | 'child'
+  /** Round knot [x, y, radius] where the branch leaves its parent, so forks join without seams. */
+  knot: [number, number, number]
   /** Centre-line of the branch, parent → child. */
   spine: Point[]
   /** Bounding box of the branch (Bézier hull), used for viewport culling. */
@@ -215,11 +212,7 @@ const cardW = (n: TreeNode) => (n.unknown ? 0 : 2 * cardHalf(n.type, !!n.husband
 const cardH = (n: TreeNode) => (n.unknown ? 0 : 2 * cardHalf(n.type, !!n.husband).hh)
 
 /** Width of every branch of one generation (the founder's equals the trunk top). */
-const limbWidth = (generation: number, trunkScale: number) => {
-  const main = Math.min(generation, MAIN_LIMB_GENERATIONS) - 1
-  const twig = Math.max(0, generation - MAIN_LIMB_GENERATIONS)
-  return Math.max(MIN_LIMB, TRUNK_TOP * trunkScale * MAIN_TAPER ** main * TAPER ** twig)
-}
+const limbWidth = (generation: number, trunkScale: number) => Math.max(MIN_LIMB, TRUNK_TOP * trunkScale * TAPER ** (generation - 1))
 
 function collides(a: Polar, b: Polar): boolean {
   return Math.abs(a.x - b.x) < (a.w + b.w) / 2 + PAD_X && Math.abs(a.y - b.y) < (a.h + b.h) / 2 + PAD_Y
@@ -488,6 +481,8 @@ export function computeLayout(data: TreeNode, index: TreeIndex): TreeLayout {
 
   const nodes: LayoutNode[] = []
   const links: LayoutLink[] = []
+  /** Heading of the limb where it reaches each card (parents come before their children in `all`). */
+  const arrival = new Map<string, Point>()
   const byId = new Map<string, LayoutNode>()
   const bounds: Box = { minX: -MEMBER_W / 2, maxX: MEMBER_W / 2, minY: -MEMBER_H / 2, maxY: MEMBER_H / 2 }
 
@@ -533,11 +528,13 @@ export function computeLayout(data: TreeNode, index: TreeIndex): TreeLayout {
      */
     const len = Math.hypot(p.x - pp.x, p.y - pp.y) || 1
     const [dx, dy] = [(p.x - pp.x) / len, (p.y - pp.y) / len]
-    const [ox, oy] = outward(pp, outerRadius * FOCUS_DEPTH)
+    // It leaves carrying on the way its parent's own limb arrived (so the wood flows through the fork),
+    // leaning towards the child, and bends upward once near the end: a single bow, not an S.
+    const [ox, oy] = arrival.get(from.data.id) ?? outward(pp, outerRadius * FOCUS_DEPTH)
     const [ex, ey] = outward(p, outerRadius * FOCUS_DEPTH)
-    // It leaves already leaning towards the child and bends upward once near the end: a single bow, not an S.
     const [ax, ay] = unit(dx + ox * LEAVE_UP, dy + oy * LEAVE_UP)
     const [bx, by] = unit(ex + dx * ARRIVE_LEAN, ey + dy * ARRIVE_LEAN)
+    arrival.set(d.id, [bx, by])
     const c1: Point = [pp.x + ax * len * LIMB_BEND, pp.y + ay * len * LIMB_BEND]
     const c2: Point = [p.x - bx * len * LIMB_BEND, p.y - by * len * LIMB_BEND]
     const centre: Point[] = []
@@ -557,7 +554,7 @@ export function computeLayout(data: TreeNode, index: TreeIndex): TreeLayout {
     links.push({
       id: d.id,
       d: taperedPolylinePath(centre, w0, w1),
-      kind: d.type === 'wife' ? 'wife' : 'child',
+      knot: [pp.x, pp.y, w0 / 2],
       spine: centre,
       box: {
         minX: Math.min(...xs) - pad,

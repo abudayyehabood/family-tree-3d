@@ -1,13 +1,10 @@
 import { memo } from 'react'
 
-interface BranchProps {
-  d: string
-  kind: 'wife' | 'child'
-}
+/** Every branch is the same wood, so limbs flow into each other without a colour seam at the forks. */
+export const WOOD = '#6b4423'
 
-/** Wife branches carry a warm golden-wood tint; child branches run from rich wood to olive. */
-function Branch({ d, kind }: BranchProps) {
-  return <path d={d} fill={kind === 'wife' ? 'url(#branchWife)' : 'url(#branchChild)'} stroke="#2a1609" strokeOpacity={0.35} strokeWidth={1} />
+function Branch({ d }: { d: string }) {
+  return <path d={d} fill={WOOD} stroke="#2a1609" strokeOpacity={0.35} strokeWidth={1} />
 }
 
 export default memo(Branch)
