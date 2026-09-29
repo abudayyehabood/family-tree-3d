@@ -8,7 +8,7 @@ An Arabic, right-to-left family tree drawn as a living tree: trunk, roots, green
 - Click any person to open the side panel: rename («حفظ الاسم» or Enter), add wife (up to 4), add son/daughter, collapse/expand, delete.
 - Double-click any card to rename it directly on the tree.
 - Zoom dock (+ / − / percentage / «توسيط الشجرة»), search with auto-expand, JSON import/export, auto-save to `localStorage`.
-- Stress test: 1,500 people across 15 generations, collapsed from generation 4.
+- Stress test: 700 people across 15 generations, collapsed from generation 4.
 
 ## Rules
 

@@ -1,7 +1,7 @@
 import { memo } from 'react'
 import type { Gender, NodeType } from '../model'
 import { yearsLabel } from '../lib/tree'
-import { badgeBox, MEMBER_H, MEMBER_W, WIFE_H, WIFE_W } from '../lib/treeLayout'
+import { badgeBox, COUPLE_W, MEMBER_H, MEMBER_W, WIFE_H, WIFE_W } from '../lib/treeLayout'
 
 interface NodeCardProps {
   id: string
@@ -66,6 +66,18 @@ function ToggleBadge({ type, collapsed, hiddenCount }: { type: NodeType; collaps
   )
 }
 
+/** "Generation N" tag shown over the selected card. */
+function GenerationTag({ generation, top }: { generation: number; top: number }) {
+  return (
+    <g transform={`translate(0,${top - 20})`}>
+      <rect x={-34} y={-11} width={68} height={22} rx={11} fill="#14532d" stroke="#fef3c7" strokeWidth={1.5} />
+      <text y={4.5} textAnchor="middle" fontSize={12} fontWeight={800} fill="#fef3c7">
+        {`الجيل ${generation}`}
+      </text>
+    </g>
+  )
+}
+
 function NodeCard(props: NodeCardProps) {
   const { id, type, gender, name, generation, born, died, husband, x, y, isRoot, collapsed, childCount, hiddenCount, selected } = props
   const years = yearsLabel(born, died)
@@ -97,14 +109,42 @@ function NodeCard(props: NodeCardProps) {
         {childCount > 0 && (
           <ToggleBadge type="wife" collapsed={collapsed} hiddenCount={hiddenCount} />
         )}
+        {selected && <GenerationTag generation={generation} top={-WH - 6} />}
       </g>
     )
   }
 
   const female = gender === 'female'
+
+  if (female && husband) {
+    // A married daughter and her husband: two wife-sized pills locked together like ∞ (hers on the right).
+    const cx = COUPLE_W / 2 - WW
+    return (
+      <g className="node-card" data-node-id={id} transform={`translate(${x},${y})`}>
+        {selected && <rect x={-COUPLE_W / 2 - 6} y={-WH - 6} width={COUPLE_W + 12} height={WIFE_H + 12} rx={WH + 6} fill="#fde047" fillOpacity={0.5} stroke="#2563eb" strokeWidth={3} />}
+        <rect x={-cx - WW} y={-WH} width={WIFE_W} height={WIFE_H} rx={WH} fill="#e0f2fe" stroke="#0369a1" strokeWidth={2} />
+        <rect x={cx - WW} y={-WH} width={WIFE_W} height={WIFE_H} rx={WH} fill="url(#cardFemale)" stroke="#be185d" strokeWidth={2} />
+        {/* Redraw his outline over hers, so the two rings interlock instead of one hiding the other. */}
+        <path d={`M${-cx + WW - WH},${-WH} A${WH},${WH} 0 0 1 ${-cx + WW - WH},${WH}`} fill="none" stroke="#0369a1" strokeWidth={2} />
+        <text x={cx + 4} y={years ? 0 : 5} textAnchor="middle" fontSize={years ? 13.5 : 14.5} fontWeight={800} fill="#4a0f2a">
+          {truncate(name, 10)}
+        </text>
+        {years && (
+          <text x={cx + 4} y={12.5} textAnchor="middle" fontSize={9.5} fontWeight={700} fill="#831843">
+            {years}
+          </text>
+        )}
+        <text x={-cx - 4} y={5} textAnchor="middle" fontSize={14} fontWeight={800} fill="#0c4a6e">
+          <title>{`زوجها ${husband}`}</title>
+          {truncate(husband, 10)}
+        </text>
+        {selected && <GenerationTag generation={generation} top={-WH - 6} />}
+      </g>
+    )
+  }
+
   const fill = isRoot ? 'url(#cardFounder)' : female ? 'url(#cardFemale)' : 'url(#cardMale)'
   const textColor = female && !isRoot ? '#4a0f2a' : '#ffffff'
-  const subline = [female && husband ? `زوجها ${husband}` : '', years].filter(Boolean).join(' · ')
 
   return (
     <g className="node-card" data-node-id={id} transform={`translate(${x},${y})`}>
@@ -114,9 +154,9 @@ function NodeCard(props: NodeCardProps) {
       <path d={`M${-MW + 10},${MH - 8} Q0,${MH - 2} ${MW - 10},${-MH + 8}`} fill="none" stroke="#ffffff" strokeOpacity={0.16} strokeWidth={2} />
       <text
         x={female ? 0 : -10}
-        y={subline ? -1 : 6}
+        y={years ? -1 : 6}
         textAnchor="middle"
-        fontSize={subline ? 15 : 17}
+        fontSize={years ? 15 : 17}
         fontWeight={800}
         fill={textColor}
         stroke={female && !isRoot ? '#ffffff' : '#0b2410'}
@@ -127,9 +167,9 @@ function NodeCard(props: NodeCardProps) {
       >
         {truncate(name, female ? 12 : 10)}
       </text>
-      {subline && (
+      {years && (
         <text x={female ? 0 : -10} y={14.5} textAnchor="middle" fontSize={10} fontWeight={700} fill={female && !isRoot ? '#831843' : '#ecfccb'}>
-          {truncate(subline, female ? 24 : 18)}
+          {years}
         </text>
       )}
       {isRoot ? (
@@ -153,6 +193,7 @@ function NodeCard(props: NodeCardProps) {
       {childCount > 0 && (
         <ToggleBadge type="member" collapsed={collapsed} hiddenCount={hiddenCount} />
       )}
+      {selected && <GenerationTag generation={generation} top={-MH - 6} />}
     </g>
   )
 }

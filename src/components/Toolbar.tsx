@@ -104,7 +104,7 @@ export default function Toolbar({ index, onSearchPick, canUndo, canRedo, onUndo,
   }
 
   const tools: Tool[] = [
-    { icon: Zap, label: 'توليد 1500 شخص (15 جيل)', onClick: onStress, accent: true, desktopOnly: true },
+    { icon: Zap, label: 'توليد 700 شخص (15 جيل)', onClick: onStress, accent: true, desktopOnly: true },
     { icon: ChevronsUpDown, label: 'فتح كل الفروع', onClick: onExpandAll },
     { icon: Users, label: 'عائلة تجريبية صغيرة', onClick: onDemo },
     { icon: FilePlus2, label: 'شجرة جديدة فارغة', onClick: onReset },

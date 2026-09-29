@@ -4,14 +4,14 @@ import { select } from 'd3-selection'
 import { zoom, zoomIdentity } from 'd3-zoom'
 import type { D3ZoomEvent, ZoomBehavior, ZoomTransform } from 'd3-zoom'
 import { Crosshair, Minus, Plus } from 'lucide-react'
-import { hitTest, MEMBER_H, WIFE_H } from '../lib/treeLayout'
+import { cardHalf, hitTest } from '../lib/treeLayout'
 import type { Box, LayoutLink, LayoutNode, TreeLayout } from '../lib/treeLayout'
 import Branch from './Branch'
 import Foliage from './Foliage'
 import NodeCard from './NodeCard'
 import Trunk, { TRUNK_DEPTH, TRUNK_HALF_WIDTH } from './Trunk'
 
-/** Low enough to fit a fully expanded 1,500-person tree on a phone. */
+/** Low enough to fit a fully expanded 700-person tree on a phone. */
 const MIN_SCALE = 0.005
 const MAX_SCALE = 3
 const ZOOM_STEP = 1.35
@@ -24,6 +24,9 @@ const NODE_REACH = 120
 const TAP_SLOP = 10
 /** Screen-px of forgiveness around a card, so cards stay tappable at a zoomed-out fit. */
 const TAP_PAD = 12
+
+/** Extra trunk length (unscaled units) when the crown hangs below the founder, so the ground stays under every card. */
+const trunkExtra = (l: TreeLayout) => Math.max(0, (l.bounds.maxY + 150) / l.trunkScale - 220)
 
 const intersects = (a: Box, b: Box) => a.minX <= b.maxX && a.maxX >= b.minX && a.minY <= b.maxY && a.maxY >= b.minY
 
@@ -125,7 +128,7 @@ export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onR
       el.style.display = 'none'
       return
     }
-    const halfH = (node.type === 'wife' ? WIFE_H : MEMBER_H) / 2 + (node.isRoot ? 12 : 0)
+    const halfH = cardHalf(node.type, !!node.husband).hh + (node.isRoot ? 12 : 0)
     el.style.display = ''
     el.style.left = `${t.x + node.x * t.k}px`
     el.style.top = `${t.y + (node.y + halfH) * t.k + 10}px`
@@ -242,7 +245,7 @@ export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onR
       const left = Math.min(bounds.minX, -TRUNK_HALF_WIDTH * trunkScale)
       const right = Math.max(bounds.maxX, TRUNK_HALF_WIDTH * trunkScale)
       const top = bounds.minY
-      const bottom = TRUNK_DEPTH * trunkScale
+      const bottom = (TRUNK_DEPTH + trunkExtra(layoutRef.current)) * trunkScale
       const padding = 50
       const k = Math.min((svg.clientWidth - padding * 2) / (right - left), (svg.clientHeight - padding * 2) / (bottom - top), 1.2)
       moveCamera((left + right) / 2, (top + bottom) / 2, k, animate)
@@ -444,7 +447,7 @@ export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onR
         </defs>
         <g ref={viewportRef}>
           <Foliage nodes={visibleNodes} crown={layout.crown} />
-          <Trunk scale={layout.trunkScale} />
+          <Trunk scale={layout.trunkScale} extra={trunkExtra(layout)} />
           <BranchesLayer links={visibleLinks} />
           <NodesLayer nodes={visibleNodes} selectedId={selectedId} />
         </g>

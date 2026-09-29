@@ -34,24 +34,39 @@ const GRASS = [
   'M292,244 q3,-16 6,0', 'M328,250 q4,-18 7,0',
 ]
 
-/** Grassy hill, spreading roots and a sculpted oak trunk under the founder. */
-function Trunk({ scale }: { scale: number }) {
+/** Height of the straight column above the flare; `extra` lengthens only this part. */
+const COLUMN = 140
+
+/** Moves every absolute "x,y" pair: the column stretches by `extra`, the flare below it shifts down. */
+const lengthen = (d: string, extra: number) =>
+  d.replace(/(-?[\d.]+),(-?[\d.]+)/g, (_, x, y) => `${x},${+y <= COLUMN ? +y * (1 + extra / COLUMN) : +y + extra}`)
+
+/**
+ * Grassy hill, spreading roots and a sculpted oak trunk under the founder. `extra` (unscaled units)
+ * makes the trunk taller for a crown that hangs below the founder: only the column grows, the hill,
+ * roots and flare keep their shape.
+ */
+function Trunk({ scale, extra = 0 }: { scale: number; extra?: number }) {
   return (
     <g className="trunk-layer" transform={`scale(${scale})`}>
+      <g transform={`translate(0,${extra})`}>
       <path d="M-380,285 C-300,236 -160,220 0,220 C160,220 300,236 380,285 Z" fill="url(#hill)" />
       {ROOT_PATHS.map((d, i) => (
         <path key={i} d={d} fill="url(#woodRoot)" />
       ))}
-      <path d={TRUNK_PATH} fill="url(#woodTrunk)" stroke="#22120a" strokeWidth={1.5} />
+      </g>
+      <path d={lengthen(TRUNK_PATH, extra)} fill="url(#woodTrunk)" stroke="#22120a" strokeWidth={1.5} />
       {BARK_LINES.map((d, i) => (
-        <path key={i} d={d} fill="none" stroke="#1f1008" strokeOpacity={0.4} strokeWidth={1.8} strokeLinecap="round" />
+        <path key={i} d={lengthen(d, extra)} fill="none" stroke="#1f1008" strokeOpacity={0.4} strokeWidth={1.8} strokeLinecap="round" />
       ))}
-      <ellipse cx={11} cy={120} rx={6} ry={9} fill="#2c1709" opacity={0.6} />
-      <ellipse cx={11} cy={120} rx={3} ry={5} fill="#5a3519" opacity={0.85} />
+      <ellipse cx={11} cy={120 * (1 + extra / COLUMN)} rx={6} ry={9} fill="#2c1709" opacity={0.6} />
+      <ellipse cx={11} cy={120 * (1 + extra / COLUMN)} rx={3} ry={5} fill="#5a3519" opacity={0.85} />
+      <g transform={`translate(0,${extra})`}>
       <path d="M-380,285 C-300,262 -160,254 0,256 C160,254 300,262 380,285 Z" fill="#4f8a2f" opacity={0.85} />
       {GRASS.map((d, i) => (
         <path key={i} d={d} fill="none" stroke="#3f7a26" strokeWidth={2.5} strokeLinecap="round" />
       ))}
+      </g>
     </g>
   )
 }

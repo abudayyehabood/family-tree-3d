@@ -191,6 +191,7 @@ export default function SidePanel({
           <Icon className="size-4" />
         </span>
         <p className="min-w-0 flex-1 truncate text-sm font-extrabold text-stone-900">{node.name}</p>
+        <span className="shrink-0 rounded-full bg-green-800 px-2 py-0.5 text-xs font-bold text-amber-50">الجيل {node.generation}</span>
         <button type="button" onClick={onClose} aria-label="إغلاق" className="rounded-lg p-1 text-stone-500 hover:bg-amber-200/60">
           <X className="size-5" />
         </button>

@@ -224,7 +224,7 @@ export default function App() {
         canRedo={canRedo}
         onUndo={undo}
         onRedo={redo}
-        onStress={() => askReplace('شجرة اختبار 1500 شخص', () => createStressTree(Date.now()), (n) => `تم توليد ${n} شخص عبر 15 جيلاً`)}
+        onStress={() => askReplace('شجرة اختبار 700 شخص', () => createStressTree(Date.now()), (n) => `تم توليد ${n} شخص عبر 15 جيلاً`)}
         onExpandAll={() => {
           pendingFitRef.current = 'animated'
           dispatch({ type: 'view', update: expandAll })

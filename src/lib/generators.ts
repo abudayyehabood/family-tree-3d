@@ -33,9 +33,10 @@ export function createDemoFamily(): TreeNode {
 
 /**
  * Target number of members born into each generation (index 0 = generation 1).
- * Together with the wives this lands close to 1,500 people across 15 generations.
+ * The family grows, peaks around generation 12, then thins out: the youngest generations are
+ * still being born. Together with the wives this lands close to 700 people across 15 generations.
  */
-const MEMBERS_PER_GENERATION = [1, 4, 8, 14, 24, 38, 56, 78, 96, 110, 120, 128, 132, 134, 136]
+const MEMBERS_PER_GENERATION = [1, 3, 6, 10, 16, 24, 32, 41, 49, 55, 59, 61, 57, 49, 37]
 
 function pickWifeCount(roll: number): number {
   if (roll < 0.45) return 1
@@ -44,7 +45,7 @@ function pickWifeCount(roll: number): number {
   return 4
 }
 
-/** Realistic stress-test tree: 15 generations, multiple wives, ~1,500 people. */
+/** Realistic stress-test tree: 15 generations, multiple wives, ~700 people. */
 export function createStressTree(seed = 20260926): TreeNode {
   const rng = createRng(seed)
   const founder = member(rng.pick(MALE_NAMES), 'male', 1)
