@@ -55,3 +55,18 @@ for (const seed of [20260926, 42]) {
     assert.ok(crossings <= 3, `${crossings} crossing branches`)
   })
 }
+
+test('every branch leads back to the founder, and each generation gets one label', () => {
+  const root = expandAll(createStressTree(7))
+  const layout = computeLayout(root, buildIndex(root))
+  const founder = layout.nodes.find((n) => n.isRoot)
+  const byChild = new Map(layout.links.map((l) => [l.id, l]))
+  for (const l of layout.links) {
+    let at = l
+    for (let hops = 0; at && hops < 40; hops++) at = byChild.get(at.from) ?? (at.from === founder.id ? null : at)
+    assert.equal(at, null, `branch to ${layout.byId.get(l.id).name} never reaches the founder`)
+  }
+  const gens = layout.rings.map((r) => r.generation)
+  assert.deepEqual(gens, [...new Set(gens)].sort((a, b) => a - b))
+  assert.equal(gens.length, 14, 'generations 2–15')
+})

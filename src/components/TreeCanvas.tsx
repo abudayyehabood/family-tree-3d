@@ -4,9 +4,9 @@ import { select } from 'd3-selection'
 import { zoom, zoomIdentity } from 'd3-zoom'
 import type { D3ZoomEvent, ZoomBehavior, ZoomTransform } from 'd3-zoom'
 import { Crosshair, Minus, Plus } from 'lucide-react'
-import { LIMB_THICKNESS, cardHalf, hitTest } from '../lib/treeLayout'
+import { cardHalf, hitTest } from '../lib/treeLayout'
 import type { Box, LayoutLink, LayoutNode, TreeLayout } from '../lib/treeLayout'
-import Branch, { WOOD } from './Branch'
+import Branch, { MIN_SCREEN_WIDTH, WOOD } from './Branch'
 import Foliage from './Foliage'
 import NodeCard from './NodeCard'
 import Trunk, { TRUNK_DEPTH, TRUNK_HALF_WIDTH } from './Trunk'
@@ -24,6 +24,13 @@ const NODE_REACH = 120
 const TAP_SLOP = 10
 /** Screen-px of forgiveness around a card, so cards stay tappable at a zoomed-out fit. */
 const TAP_PAD = 12
+
+/** Generation labels whose rows are closer than this on screen (px) and overlap sideways hide the later one. */
+const LABEL_GAP = 22
+/** Screen room (px) the whole-tree fit keeps left of the tree for generation labels. */
+const LABEL_ROOM = 80
+/** Gold of the selected person's line back to the trunk. */
+const LINEAGE = '#f59e0b'
 
 /** Extra trunk length (unscaled units) when the crown hangs below the founder, so the ground stays under every card. */
 const trunkExtra = (l: TreeLayout) => Math.max(0, (l.bounds.maxY + 150) / l.trunkScale - 220)
@@ -64,6 +71,27 @@ const BranchesLayer = memo(function BranchesLayer({ links }: { links: LayoutLink
       {/* Knots over every fork, drawn after the branches so they hide the seams where limbs meet. */}
       {links.map(({ id, knot: [x, y, r] }) => (
         <circle key={id} cx={x} cy={y} r={r} fill={WOOD} />
+      ))}
+    </g>
+  )
+})
+
+/** The selected person's branches all the way down to the trunk, drawn in gold over the wood. */
+const LineageLayer = memo(function LineageLayer({ links, selectedId }: { links: LayoutLink[]; selectedId: string | null }) {
+  const path = useMemo(() => {
+    const byChild = new Map(links.map((l) => [l.id, l]))
+    const out: LayoutLink[] = []
+    for (let l = selectedId ? byChild.get(selectedId) : undefined; l; l = byChild.get(l.from)) out.push(l)
+    return out
+  }, [links, selectedId])
+  if (!path.length) return null
+  return (
+    <g className="lineage-layer" pointerEvents="none">
+      {path.map((l) => (
+        <path key={l.id} d={l.d} fill={LINEAGE} stroke={LINEAGE} strokeWidth={MIN_SCREEN_WIDTH * 2} vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
+      ))}
+      {path.map(({ id, knot: [x, y, r] }) => (
+        <circle key={id} cx={x} cy={y} r={r} fill={LINEAGE} />
       ))}
     </g>
   )
@@ -138,6 +166,26 @@ export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onR
     el.style.top = `${t.y + (node.y + halfH) * t.k + 10}px`
   }, [])
 
+  const labelsRef = useRef<HTMLDivElement>(null)
+  /** Pins each generation label to the end of its ring, hiding any that would crowd the one before. */
+  const placeLabels = useCallback((t: ZoomTransform) => {
+    const el = labelsRef.current
+    if (!el) return
+    const shown: Array<[number, number, number]> = []
+    for (const span of Array.from(el.children) as HTMLElement[]) {
+      const ring = layoutRef.current.rings[Number(span.dataset.index)]
+      if (!ring) continue
+      // Anchored on the label's right edge; the width is only known once it is on the page.
+      const x = t.x + ring.x * t.k
+      const y = t.y + ring.y * t.k
+      const w = span.offsetWidth || 60
+      const show = shown.every(([sx, sy, sw]) => Math.abs(sy - y) >= LABEL_GAP || x <= sx - sw || x - w >= sx)
+      span.style.visibility = show ? '' : 'hidden'
+      span.style.transform = `translate(${x}px, ${y}px) translate(-100%, -50%)`
+      if (show) shown.push([x, y, w])
+    }
+  }, [])
+
   /** World-space rectangle currently worth rendering (viewport + margin). */
   const updateViewBox = useCallback((t: ZoomTransform) => {
     const svg = svgRef.current
@@ -166,7 +214,8 @@ export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onR
     layoutRef.current = layout
     selectedRef.current = selectedId
     placeActions(transformRef.current)
-  }, [layout, selectedId, actions, placeActions])
+    placeLabels(transformRef.current)
+  }, [layout, selectedId, actions, placeActions, placeLabels])
 
   const cancelAnimation = useCallback(() => {
     if (animationRef.current) cancelAnimationFrame(animationRef.current)
@@ -191,6 +240,7 @@ export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onR
         transformRef.current = event.transform
         viewport.setAttribute('transform', event.transform.toString())
         placeActions(event.transform)
+        placeLabels(event.transform)
         setZoomPercent(Math.round(event.transform.k * 100))
         if (performance.now() - lastCullRef.current > CULL_INTERVAL_MS) updateViewBox(event.transform)
       })
@@ -203,7 +253,7 @@ export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onR
       selection.on('.zoom', null)
       zoomRef.current = null
     }
-  }, [cancelAnimation, updateViewBox, placeActions])
+  }, [cancelAnimation, updateViewBox, placeActions, placeLabels])
 
   /** Moves the camera so world point (cx, cy) sits at the viewport centre with scale k. */
   const moveCamera = useCallback(
@@ -251,8 +301,10 @@ export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onR
       const top = bounds.minY
       const bottom = (TRUNK_DEPTH + trunkExtra(layoutRef.current)) * trunkScale
       const padding = 50
-      const k = Math.min((svg.clientWidth - padding * 2) / (right - left), (svg.clientHeight - padding * 2) / (bottom - top), 1.2)
-      moveCamera((left + right) / 2, (top + bottom) / 2, k, animate)
+      // The generation labels hang off the left of the tree: keep screen room for them.
+      const labels = layoutRef.current.rings.length ? LABEL_ROOM : 0
+      const k = Math.min((svg.clientWidth - padding * 2 - labels) / (right - left), (svg.clientHeight - padding * 2) / (bottom - top), 1.2)
+      moveCamera((left + right) / 2 - labels / 2 / k, (top + bottom) / 2, k, animate)
     },
     [moveCamera],
   )
@@ -442,11 +494,24 @@ export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onR
         </defs>
         <g ref={viewportRef}>
           <Foliage nodes={visibleNodes} crown={layout.crown} />
-          <Trunk scale={layout.trunkScale} extra={trunkExtra(layout)} top={LIMB_THICKNESS} />
+          <Trunk scale={layout.trunkScale} extra={trunkExtra(layout)} />
           <BranchesLayer links={visibleLinks} />
+          <LineageLayer links={layout.links} selectedId={selectedId} />
           <NodesLayer nodes={visibleNodes} selectedId={selectedId} />
         </g>
       </svg>
+
+      <div ref={labelsRef} className="pointer-events-none absolute inset-0 z-10 overflow-hidden" aria-hidden>
+        {layout.rings.map((ring, i) => (
+          <span
+            key={ring.generation}
+            data-index={i}
+            className="absolute top-0 left-0 whitespace-nowrap rounded-full bg-[#3b2412]/75 px-2 py-0.5 text-[11px] font-bold text-amber-50 shadow sm:text-xs"
+          >
+            الجيل {ring.generation}
+          </span>
+        ))}
+      </div>
 
       {actions && (
         <div

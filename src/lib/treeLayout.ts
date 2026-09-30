@@ -84,6 +84,10 @@ const DEG = Math.PI / 180
  * the crown is round like an oak instead of a flat fan.
  */
 const MAX_THETA = 70 * DEG
+/** Room between a generation label and the card it names. */
+const LABEL_GAP = 16
+/** How strongly a full ring spreads its cards evenly over the fan (0 = tidy tree only). */
+const SPREAD = 0.5
 /** 1 = plain circles around the founder, 0 = circles through the founder. */
 const DOME = 0.7
 const dome = (theta: number) => DOME + (1 - DOME) * Math.cos(theta)
@@ -114,10 +118,9 @@ const RING_BUMP = 16
 const LANE_STEP = MEMBER_H + PAD_Y + 10
 const MAX_ATTEMPTS = 120
 
-/** Branch width: the founder's limbs are this fraction of the trunk's 48-unit column, then TAPER thinner every generation. */
-export const LIMB_THICKNESS = 0.25
-const TRUNK_TOP = 48 * LIMB_THICKNESS
-const TAPER = 0.8
+/** Branch width: the trunk top for the founder, then 25% thinner every generation. */
+const TRUNK_TOP = 48
+const TAPER = 0.75
 const MIN_LIMB = 3
 /** A generation's ring sits at least this many of its limb widths beyond the one before. */
 const LIMB_LENGTH = 2.5
@@ -167,6 +170,8 @@ export interface Box {
 
 export interface LayoutLink {
   id: string
+  /** The card this branch grows from (an unknown mother's children grow from her husband). */
+  from: string
   d: string
   /** Round knot [x, y, radius] where the branch leaves its parent, so forks join without seams. */
   knot: [number, number, number]
@@ -189,6 +194,8 @@ export interface TreeLayout {
   bounds: Box
   /** Big leafy silhouette drawn behind the whole canopy. */
   crown: CrownBlob[]
+  /** Anchor (right edge, vertical middle) of each generation's label, beside its leftmost card. */
+  rings: Array<{ generation: number; x: number; y: number }>
   /** Trunk scale (1 for normal families, grows for huge crowns so the trunk stays proportional). */
   trunkScale: number
 }
@@ -408,8 +415,17 @@ export function computeLayout(data: TreeNode, index: TreeIndex): TreeLayout {
       if (!cards.length) return
       const gaps = cards.slice(1).map((n, k) => laneGap(cards[k], n) * (boost.get(n.data.id) ?? 1))
       if (gaps.reduce((s, g) => s + g, 0) > 2 * MAX_THETA) crowded.push(depth)
+      // Fill the holes shallow families leave: a crowded ring leans towards spreading its cards evenly
+      // over the fan (keeping their order, so limbs still cannot cross); a sparse ring keeps the tidy angles.
+      const total = gaps.reduce((s, g) => s + g, 0)
+      const lean = total > 0 ? SPREAD * Math.min(1, total / (2 * MAX_THETA)) : 0
+      let before = 0
       const relaxed = relaxAngles(
-        cards.map((n) => toTheta(n.x!)),
+        cards.map((n, k) => {
+          const even = -MAX_THETA + (2 * MAX_THETA * before) / (total || 1)
+          before += gaps[k] ?? 0
+          return (1 - lean) * toTheta(n.x!) + lean * even
+        }),
         gaps,
       )
       cards.forEach((n, k) => thetas.set(n.data.id, relaxed[k]))
@@ -557,6 +573,7 @@ export function computeLayout(data: TreeNode, index: TreeIndex): TreeLayout {
     const ys = centre.map((q) => q[1])
     links.push({
       id: d.id,
+      from: from.data.id,
       d: taperedPolylinePath(centre, w0, w1),
       knot: [pp.x, pp.y, w0 / 2],
       spine: centre,
@@ -569,21 +586,35 @@ export function computeLayout(data: TreeNode, index: TreeIndex): TreeLayout {
     })
   }
 
-  return { nodes, links, byId, bounds, crown: crownBlobs(outerRadius), trunkScale }
+  // One label per generation of blood members, just left of that generation's leftmost card.
+  const rings: TreeLayout['rings'] = []
+  for (const level of levels) {
+    let left: LayoutNode | undefined
+    for (const n of level) {
+      const node = byId.get(n.data.id)
+      if (node && node.type === 'member' && !node.isRoot && (!left || node.x < left.x)) left = node
+    }
+    if (left) rings.push({ generation: left.generation, x: left.x - cardHalf(left.type, !!left.husband).hw - LABEL_GAP, y: left.y })
+  }
+
+  return { nodes, links, byId, bounds, crown: crownBlobs(nodes, outerRadius), rings, trunkScale }
 }
 
-/** A rounded leafy crown: large overlapping circles covering the whole canopy. */
-function crownBlobs(outer: number): CrownBlob[] {
-  const R = Math.max(outer, 260)
-  const [cx, cy] = toPoint(R * 0.5 * Math.max(0, Math.cos(MAX_THETA / 2)), 0)
-  const blobs: CrownBlob[] = [{ cx, cy, r: R * 0.55 }]
-  const steps = 10
-  for (let i = 0; i <= steps; i++) {
-    // Blobs stop short of hanging below the founder, so none sinks under the ground.
-    const a = Math.min(MAX_THETA * 0.85, 105 * DEG) * (-1 + (2 * i) / steps)
-    const [x1, y1] = toPoint(R * 0.66, a)
-    const [x2, y2] = toPoint(R * 0.93, a * 1.05)
-    blobs.push({ cx: x1, cy: y1, r: R * 0.36 }, { cx: x2, cy: y2, r: R * 0.24 })
+/**
+ * Leafy crown that follows the real branches: cards are binned on a coarse grid and every occupied
+ * cell gets one big soft blob, so the canopy leans and gaps where the tree does.
+ */
+function crownBlobs(nodes: LayoutNode[], outer: number): CrownBlob[] {
+  const cell = Math.max(320, outer / 7)
+  const bins = new Map<string, { x: number; y: number; n: number }>()
+  for (const { x, y, isRoot } of nodes) {
+    if (isRoot) continue
+    const key = `${Math.floor(x / cell)},${Math.floor(y / cell)}`
+    const bin = bins.get(key) ?? { x: 0, y: 0, n: 0 }
+    bin.x += x
+    bin.y += y
+    bin.n++
+    bins.set(key, bin)
   }
-  return blobs
+  return [...bins.values()].map(({ x, y, n }) => ({ cx: x / n, cy: y / n, r: cell * (0.75 + 0.1 * Math.min(3, n - 1)) }))
 }
