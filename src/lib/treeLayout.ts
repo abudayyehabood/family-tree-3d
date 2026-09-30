@@ -114,8 +114,9 @@ const RING_BUMP = 16
 const LANE_STEP = MEMBER_H + PAD_Y + 10
 const MAX_ATTEMPTS = 120
 
-/** Branch width: the trunk top for the founder, then this factor thinner every generation. */
-const TRUNK_TOP = 48
+/** Branch width: the founder's limbs are this fraction of the trunk's 48-unit column, then TAPER thinner every generation. */
+export const LIMB_THICKNESS = 0.25
+const TRUNK_TOP = 48 * LIMB_THICKNESS
 const TAPER = 0.8
 const MIN_LIMB = 3
 /** A generation's ring sits at least this many of its limb widths beyond the one before. */

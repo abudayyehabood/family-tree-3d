@@ -4,7 +4,7 @@ import { select } from 'd3-selection'
 import { zoom, zoomIdentity } from 'd3-zoom'
 import type { D3ZoomEvent, ZoomBehavior, ZoomTransform } from 'd3-zoom'
 import { Crosshair, Minus, Plus } from 'lucide-react'
-import { cardHalf, hitTest } from '../lib/treeLayout'
+import { LIMB_THICKNESS, cardHalf, hitTest } from '../lib/treeLayout'
 import type { Box, LayoutLink, LayoutNode, TreeLayout } from '../lib/treeLayout'
 import Branch, { WOOD } from './Branch'
 import Foliage from './Foliage'
@@ -442,7 +442,7 @@ export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onR
         </defs>
         <g ref={viewportRef}>
           <Foliage nodes={visibleNodes} crown={layout.crown} />
-          <Trunk scale={layout.trunkScale} extra={trunkExtra(layout)} />
+          <Trunk scale={layout.trunkScale} extra={trunkExtra(layout)} top={LIMB_THICKNESS} />
           <BranchesLayer links={visibleLinks} />
           <NodesLayer nodes={visibleNodes} selectedId={selectedId} />
         </g>

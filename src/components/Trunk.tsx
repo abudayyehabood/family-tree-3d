@@ -16,7 +16,7 @@ const ROOTS: Array<[number, number, number, number, number, number]> = [
 ]
 const ROOT_PATHS = ROOTS.map(([sx, sy, tx, ty, w0, w1]) => taperedBranchPath(sx, sy, tx, ty, w0, w1, 14))
 
-/** Sculpted trunk: 48px wide under the founder (y = 0), flaring to 110px at y = 240. */
+/** Sculpted trunk: 48px wide under the founder (y = 0, before `top` narrows it), flaring to 110px at y = 240. */
 const TRUNK_PATH =
   'M-24,0 C-25,50 -22,95 -27,140 C-31,178 -40,205 -55,228 C-62,236 -76,241 -92,244 L92,244 C76,241 62,236 55,228 C40,205 31,178 27,140 C22,95 25,50 24,0 Z'
 
@@ -37,16 +37,23 @@ const GRASS = [
 /** Height of the straight column above the flare; `extra` lengthens only this part. */
 const COLUMN = 140
 
-/** Moves every absolute "x,y" pair: the column stretches by `extra`, the flare below it shifts down. */
-const lengthen = (d: string, extra: number) =>
-  d.replace(/(-?[\d.]+),(-?[\d.]+)/g, (_, x, y) => `${x},${+y <= COLUMN ? +y * (1 + extra / COLUMN) : +y + extra}`)
+/**
+ * Moves every absolute "x,y" pair: the column narrows towards its top to `top` times its width (so it
+ * meets the founder's limbs), stretches by `extra`, and the flare below it shifts down.
+ */
+const lengthen = (d: string, extra: number, top = 1) =>
+  d.replace(/(-?[\d.]+),(-?[\d.]+)/g, (_, x, y) => {
+    const narrow = +y < COLUMN ? top + (1 - top) * (+y / COLUMN) ** 0.6 : 1
+    return `${+x * narrow},${+y <= COLUMN ? +y * (1 + extra / COLUMN) : +y + extra}`
+  })
 
 /**
  * Grassy hill, spreading roots and a sculpted oak trunk under the founder. `extra` (unscaled units)
  * makes the trunk taller for a crown that hangs below the founder: only the column grows, the hill,
  * roots and flare keep their shape.
  */
-function Trunk({ scale, extra = 0 }: { scale: number; extra?: number }) {
+function Trunk({ scale, extra = 0, top = 1 }: { scale: number; extra?: number; top?: number }) {
+  const knotNarrow = top + (1 - top) * (120 / COLUMN) ** 0.6
   return (
     <g className="trunk-layer" transform={`scale(${scale})`}>
       <g transform={`translate(0,${extra})`}>
@@ -55,12 +62,12 @@ function Trunk({ scale, extra = 0 }: { scale: number; extra?: number }) {
         <path key={i} d={d} fill="url(#woodRoot)" />
       ))}
       </g>
-      <path d={lengthen(TRUNK_PATH, extra)} fill="url(#woodTrunk)" stroke="#22120a" strokeWidth={1.5} />
+      <path d={lengthen(TRUNK_PATH, extra, top)} fill="url(#woodTrunk)" stroke="#22120a" strokeWidth={1.5} />
       {BARK_LINES.map((d, i) => (
-        <path key={i} d={lengthen(d, extra)} fill="none" stroke="#1f1008" strokeOpacity={0.4} strokeWidth={1.8} strokeLinecap="round" />
+        <path key={i} d={lengthen(d, extra, top)} fill="none" stroke="#1f1008" strokeOpacity={0.4} strokeWidth={1.8} strokeLinecap="round" />
       ))}
-      <ellipse cx={11} cy={120 * (1 + extra / COLUMN)} rx={6} ry={9} fill="#2c1709" opacity={0.6} />
-      <ellipse cx={11} cy={120 * (1 + extra / COLUMN)} rx={3} ry={5} fill="#5a3519" opacity={0.85} />
+      <ellipse cx={11 * knotNarrow} cy={120 * (1 + extra / COLUMN)} rx={6} ry={9} fill="#2c1709" opacity={0.6} />
+      <ellipse cx={11 * knotNarrow} cy={120 * (1 + extra / COLUMN)} rx={3} ry={5} fill="#5a3519" opacity={0.85} />
       <g transform={`translate(0,${extra})`}>
       <path d="M-380,285 C-300,262 -160,254 0,256 C160,254 300,262 380,285 Z" fill="#4f8a2f" opacity={0.85} />
       {GRASS.map((d, i) => (
