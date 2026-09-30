@@ -52,6 +52,6 @@ for (const seed of [20260926, 42]) {
         if (hit) crossings++
       }
     }
-    assert.ok(crossings <= 10, `${crossings} crossing branches`)
+    assert.ok(crossings <= 3, `${crossings} crossing branches`)
   })
 }

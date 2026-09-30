@@ -79,11 +79,11 @@ const COUSIN_PAD = 24
 
 const DEG = Math.PI / 180
 /**
- * The founder sits on the trunk top and generations fan out above him, up to 75° either side of
+ * The founder sits on the trunk top and generations fan out above him, up to 70° either side of
  * straight up. Rings are bent into a dome (full radius straight up, pulled in towards the flanks), so
  * the crown is round like an oak instead of a flat fan.
  */
-const MAX_THETA = 75 * DEG
+const MAX_THETA = 70 * DEG
 /** 1 = plain circles around the founder, 0 = circles through the founder. */
 const DOME = 0.7
 const dome = (theta: number) => DOME + (1 - DOME) * Math.cos(theta)
@@ -103,11 +103,6 @@ const outward = ({ x, y }: { x: number; y: number }, focus: number): Point => un
 const FOCUS_DEPTH = 0.5
 /** A narrow tree is stretched to fill the fan, but never more than this (small families stay upright). */
 const MAX_STRETCH = 2
-/**
- * The tidy tree may be squeezed to this fraction of its natural width to fit inside the fan; each ring
- * is then relaxed so cards keep their gap. Lower = denser crown but children drift from their parents.
- */
-const MIN_SQUEEZE = 0.5
 /** A ring is only allowed to be this full before it is pushed outward (room for the tidy tree's slack). */
 const RING_FILL = 0.6
 /** Radial room added between two rings whose cards touch. */
@@ -131,9 +126,9 @@ const WIFE_LIMB_LENGTH = 1.3
  * Radial room a limb gets per unit of sideways travel, so a limb that must reach far to the side climbs
  * at a slant like a real branch instead of running flat along the ring.
  */
-const TURN_SLOPE = 0.3
+const TURN_SLOPE = 0.8
 /** …but never more than this per ring, or rings whose limbs all turn far would push the crown out without end. */
-const MAX_TURN_ROOM = 500
+const MAX_TURN_ROOM = 3000
 /** How far along the limb its ends keep their heading (fraction of the limb's length). */
 const LIMB_BEND = 0.4
 /** A limb leaves its parent between "straight at the child" (0) and "straight outward" (large). */
@@ -324,7 +319,13 @@ export function computeLayout(data: TreeNode, index: TreeIndex): TreeLayout {
   /** Thick limbs need length to read as limbs rather than knots: a ring sits at least a few limb widths out. */
   const limbStep = (d: number) =>
     d ? Math.max(step[d], (step[d] === CHILD_STEP ? LIMB_LENGTH : WIFE_LIMB_LENGTH) * limbWidth(levels[d][0].data.generation, trunkScale)) : 0
-  const placeRings = () => levels.forEach((_, d) => (radius[d] = d ? radius[d - 1] + laneSpread[d - 1] + limbStep(d) + extra[d] : 0))
+  /**
+   * A tidy tree too wide for the fan is never squeezed (the rings would then shove cards away from
+   * their parents and limbs would snake after them): the rings move out instead, which narrows it.
+   */
+  let grow = 1
+  const placeRings = () =>
+    levels.forEach((_, d) => (radius[d] = d ? radius[d - 1] + laneSpread[d - 1] + grow * (limbStep(d) + extra[d]) : 0))
   /** Radial distance between two rows at angle θ: stacked vertically near the top, side by side on the steep flanks. */
   const laneStep = (theta: number) =>
     Math.min(LANE_STEP / Math.max(Math.abs(Math.cos(theta)), 1e-3), (MEMBER_W + PAD_X) / Math.max(Math.abs(Math.sin(theta)), 1e-3))
@@ -377,7 +378,7 @@ export function computeLayout(data: TreeNode, index: TreeIndex): TreeLayout {
         placeRings()
       }
       if (ratio > lanes[d]) {
-        extra[d] += radius[d] * (ratio / lanes[d] - 1)
+        extra[d] += (radius[d] * (ratio / lanes[d] - 1)) / grow
         placeRings()
       }
     })
@@ -391,8 +392,10 @@ export function computeLayout(data: TreeNode, index: TreeIndex): TreeLayout {
     }
     const span = maxX - minX
     const mid = (minX + maxX) / 2
-    // Squeeze into the fan (the rings are then relaxed below), or stretch a narrow tree to fill it.
-    const fit = span > 0 ? Math.min(MAX_STRETCH, Math.max(MIN_SQUEEZE, (2 * MAX_THETA) / span)) : 1
+    // Stretch a narrow tree to fill the fan; a wide one grows the rings for the next attempt.
+    const fit = span > 0 ? Math.min(MAX_STRETCH, (2 * MAX_THETA) / span) : 1
+    const tooWide = span > 2 * MAX_THETA * 1.02
+    if (tooWide) grow *= span / (2 * MAX_THETA)
     // Mirrored: the first-born (smallest d3 x) sits on the right, matching Arabic reading order.
     const toTheta = (x: number) => -(x - mid) * fit
 
@@ -435,7 +438,7 @@ export function computeLayout(data: TreeNode, index: TreeIndex): TreeLayout {
     }
 
     // The gaps above used last attempt's angles and trunk: settle them before judging collisions.
-    let moved = false
+    let moved = tooWide
     for (const [id, t] of thetas) {
       if (Math.abs((lastTheta.get(id) ?? 99) - t) > 2 * DEG) moved = true
       lastTheta.set(id, t)
@@ -444,7 +447,7 @@ export function computeLayout(data: TreeNode, index: TreeIndex): TreeLayout {
     if (Math.abs(nextTrunk - trunkScale) > 0.05) moved = true
     trunkScale = nextTrunk
 
-    for (const d of crowded) extra[d] += RING_BUMP
+    for (const d of crowded) extra[d] += RING_BUMP / grow
     // A limb that must turn far needs radial room to do it, or it wraps along the ring like an arch.
     const turnRoom = levels.map(() => 0)
     for (const n of all) {
@@ -458,9 +461,9 @@ export function computeLayout(data: TreeNode, index: TreeIndex): TreeLayout {
       turnRoom[n.depth] = Math.max(turnRoom[n.depth], Math.min(MAX_TURN_ROOM, sideways * TURN_SLOPE))
     }
     turnRoom.forEach((need, d) => {
-      const room = limbStep(d) + extra[d]
+      const room = grow * (limbStep(d) + extra[d])
       if (need > room + 1) {
-        extra[d] += need - room
+        extra[d] += (need - room) / grow
         moved = true
       }
     })
@@ -475,7 +478,7 @@ export function computeLayout(data: TreeNode, index: TreeIndex): TreeLayout {
       const [i, j] = [order.indexOf(a), order.indexOf(b)].sort((x, y) => x - y)
       for (let k = i; k < j; k++) boost.set(order[k], Math.min(4, (boost.get(order[k]) ?? 1) * 1.15))
     }
-    for (const [d, need] of clash) extra[d] += need
+    for (const [d, need] of clash) extra[d] += need / grow
     if (!crowded.length && !clash.size && !sameRing.length && !moved) break
   }
 
