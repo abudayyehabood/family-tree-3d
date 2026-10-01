@@ -304,7 +304,7 @@ export default function SidePanel({
         {confirmDelete && !isRoot && (
           <div className="basis-full space-y-1 rounded-md border border-red-200 bg-red-50/70 p-1.5 sm:basis-auto sm:space-y-1.5 sm:p-2">
             <p className="text-xs text-red-800">
-              حذف «{node.name}»{descendants > 0 ? ` مع ${descendants} من الذرية` : ''}؟ لا يمكن التراجع.
+              حذف «{node.name}»{descendants > 0 ? ` مع ${descendants} من الذرية` : ''}؟ يمكنك التراجع لاحقاً.
             </p>
             <div className="grid grid-cols-2 gap-1.5">
               <button type="button" onClick={() => onDelete(node.id)} className="h-7 rounded-md bg-red-700 text-xs font-bold text-white hover:bg-red-600 sm:h-9 sm:text-sm">

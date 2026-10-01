@@ -13,4 +13,15 @@ function Branch({ d }: { d: string }) {
   return <path d={d} fill={WOOD} stroke={WOOD} strokeWidth={MIN_SCREEN_WIDTH} vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
 }
 
+/** Bark over a branch: shaded underside, lit ridge and dark veins, all tapering with the wood. */
+export const Bark = memo(function Bark({ shade, light, veins }: { shade: string; light: string; veins: string }) {
+  return (
+    <>
+      <path d={shade} fill="#2e1a0b" fillOpacity={0.35} />
+      <path d={light} fill="#b98556" fillOpacity={0.3} />
+      <path d={veins} fill="#2a1609" fillOpacity={0.55} />
+    </>
+  )
+})
+
 export default memo(Branch)

@@ -35,3 +35,7 @@ body {
 .tree-canvas .toggle-btn:hover > :first-child {
   filter: brightness(1.15);
 }
+
+.far .bark-layer {
+  display: none;
+}

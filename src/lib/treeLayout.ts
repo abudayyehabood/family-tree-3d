@@ -1,7 +1,7 @@
 import { hierarchy, tree } from 'd3-hierarchy'
 import type { HierarchyNode, HierarchyPointNode } from 'd3-hierarchy'
 import type { Gender, NodeType, TreeNode } from '../model'
-import { taperedPolylinePath } from './geometry'
+import { branchBark, taperedPolylinePath } from './geometry'
 import type { Point } from './geometry'
 import type { TreeIndex } from './tree'
 
@@ -122,6 +122,8 @@ const MAX_ATTEMPTS = 120
 const TRUNK_TOP = 48
 const TAPER = 0.75
 const MIN_LIMB = 3
+/** Widest a branch may end under a card that nothing grows from. */
+const LEAF_TIP = MEMBER_H * 0.5
 /** A generation's ring sits at least this many of its limb widths beyond the one before. */
 const LIMB_LENGTH = 2.5
 /** Husband → wife is a fork rather than a limb: shorter, but still longer than it is thick. */
@@ -175,6 +177,8 @@ export interface LayoutLink {
   d: string
   /** Round knot [x, y, radius] where the branch leaves its parent, so forks join without seams. */
   knot: [number, number, number]
+  /** Bark drawn over the wood: shaded underside, lit ridge and veins along the grain. */
+  bark: { shade: string; light: string; veins: string }
   /** Centre-line of the branch, parent → child. */
   spine: Point[]
   /** Bounding box of the branch (Bézier hull), used for viewport culling. */
@@ -567,7 +571,10 @@ export function computeLayout(data: TreeNode, index: TreeIndex): TreeLayout {
 
     // Harmonic widths: a branch starts at its parent's generation width and ends at the child's.
     const w0 = limbWidth(from.data.generation, trunkScale)
-    const w1 = limbWidth(d.generation, trunkScale)
+    // A branch nobody grows from (no children, or folded away) runs out to a twig under its card
+    // instead of ending in a sawn-off stump wider than the card.
+    const tip = d.children.length === 0 || collapsed
+    const w1 = tip ? Math.min(limbWidth(d.generation, trunkScale), LEAF_TIP) : limbWidth(d.generation, trunkScale)
     const pad = w0 / 2
     const xs = centre.map((q) => q[0])
     const ys = centre.map((q) => q[1])
@@ -576,6 +583,7 @@ export function computeLayout(data: TreeNode, index: TreeIndex): TreeLayout {
       from: from.data.id,
       d: taperedPolylinePath(centre, w0, w1),
       knot: [pp.x, pp.y, w0 / 2],
+      bark: branchBark(centre, w0, w1, d.id),
       spine: centre,
       box: {
         minX: Math.min(...xs) - pad,

@@ -7,7 +7,7 @@ const jiti = createJiti(import.meta.url)
 const R = new URL('../src/', import.meta.url).pathname
 const { historyReducer } = await jiti.import(R+'lib/history.ts')
 const { createDemoFamily } = await jiti.import(R+'lib/generators.ts')
-const { buildIndex, addWife, deleteNode, renameNode, toggleCollapse } = await jiti.import(R+'lib/tree.ts')
+const { buildIndex, addWife, addChildToHusband, deleteNode, renameNode, toggleCollapse } = await jiti.import(R+'lib/tree.ts')
 
 const names = r => [...buildIndex(r).values()].map(e=>e.node.name).sort().join(',')
 let s = { root: createDemoFamily(), past: [], future: [] }
@@ -72,5 +72,20 @@ if (shared) {
   sharedSubtree = a === deep.node
 }
 results.push(['untouched branches are shared, not copied', sharedSubtree])
+
+// 9. undo keeps whatever is folded right now (folding is a view, not an edit)
+let f = { root: createDemoFamily(), past: [], future: [] }
+const ahmad2 = [...buildIndex(f.root).values()].find(e=>e.node.name==='أحمد').node
+f = historyReducer(f, { type:'commit', update:r=>renameNode(r, r.id, 'x') })
+f = historyReducer(f, { type:'view', update:r=>toggleCollapse(r, ahmad2.id) })
+f = historyReducer(f, { type:'undo' })
+results.push(['undo does not reopen a folded branch', buildIndex(f.root).get(ahmad2.id).node.collapsed === true && f.root.name !== 'x'])
+
+// 10. deleting a man's last child of an unknown mother removes the empty placeholder too
+const fam = createDemoFamily()
+const ahmad3 = [...buildIndex(fam).values()].find(e=>e.node.name==='أحمد').node
+const kid = addChildToHusband(fam, ahmad3.id, 'male', 'ولد')
+const after = deleteNode(kid.root, kid.id)
+results.push(['no empty unknown mother is left behind', !buildIndex(after).get(ahmad3.id).node.children.some(w=>w.unknown)])
 
 for (const [name, ok] of results) test(name, () => assert.ok(ok))

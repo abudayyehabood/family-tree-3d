@@ -79,3 +79,64 @@ export function taperedBranchPath(sx: number, sy: number, tx: number, ty: number
   const my = sy + (ty - sy) * 0.5
   return taperedCubicPath([sx, sy], [sx, my], [tx, my], [tx, ty], w0, w1, samples)
 }
+
+/** Cheap deterministic 0–1 random from a string, so a branch keeps the same grain on every render. */
+function hashRandom(key: string): () => number {
+  let h = 2166136261
+  for (let i = 0; i < key.length; i++) h = Math.imul(h ^ key.charCodeAt(i), 16777619)
+  return () => {
+    h = Math.imul(h ^ (h >>> 15), 2246822507)
+    h = Math.imul(h ^ (h >>> 13), 3266489909)
+    h ^= h >>> 16
+    return (h >>> 0) / 4294967296
+  }
+}
+
+/**
+ * Bark on a branch, as filled shapes that taper with the wood: a shaded underside and a lit ridge give
+ * it roundness, and a few long wavy veins run along it. `lane` is where a vein sits across the branch
+ * (-1 one edge … 1 the other), `width` its thickness as a fraction of the branch's.
+ */
+export function branchBark(centre: Point[], w0: number, w1: number, key: string): { shade: string; light: string; veins: string } {
+  const rand = hashRandom(key)
+  const last = centre.length - 1
+  const normals = centre.map((_, i) => {
+    const [px, py] = centre[Math.max(0, i - 1)]
+    const [nx, ny] = centre[Math.min(last, i + 1)]
+    const len = Math.hypot(nx - px, ny - py) || 1
+    return [-(ny - py) / len, (nx - px) / len] as Point
+  })
+  const halfWidth = (i: number) => (w1 + (w0 - w1) * Math.pow(1 - i / last, 1.4)) / 2
+  /** Strip across the branch at `lane`, `width` thick (fractions of the branch), shaped by `profile` along it. */
+  const band = (lane: (i: number) => number, width: number, from = 0, to = last, profile = (_s: number) => 1) => {
+    const left: Point[] = []
+    const right: Point[] = []
+    for (let i = from; i <= to; i++) {
+      const hw = halfWidth(i)
+      const half = (width * profile((i - from) / (to - from))) / 2
+      const [x, y] = centre[i]
+      const [nx, ny] = normals[i]
+      left.push([x + nx * (lane(i) + half) * hw, y + ny * (lane(i) + half) * hw])
+      right.push([x + nx * (lane(i) - half) * hw, y + ny * (lane(i) - half) * hw])
+    }
+    right.reverse()
+    return `M${fmt(left[0])}${smoothThrough(left)}L${fmt(right[0])}${smoothThrough(right)}Z`
+  }
+  /** Veins swell in the middle and run out to a point at both ends. */
+  const spindle = (s: number) => Math.pow(Math.sin(Math.PI * s), 0.7)
+  const veins: string[] = []
+  const count = 3 + Math.floor(rand() * 2)
+  for (let v = 0; v < count; v++) {
+    const base = -0.6 + (1.2 * (v + 0.2 + rand() * 0.6)) / count
+    const phase = rand() * Math.PI * 2
+    const wobble = 0.06 + rand() * 0.08
+    const from = Math.floor(rand() * last * 0.3)
+    const to = last - Math.floor(rand() * last * 0.35)
+    veins.push(band((i) => base + wobble * Math.sin(phase + i * 0.45), 0.12, from, to, spindle))
+  }
+  return {
+    shade: band(() => -0.62, 0.36),
+    light: band(() => 0.4, 0.22),
+    veins: veins.join(''),
+  }
+}

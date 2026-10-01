@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { ArrowUp, TreeDeciduous } from 'lucide-react'
+import { MAX_GENERATION } from './model'
 import type { Gender, TreeNode } from './model'
 import { createDemoFamily, createEmptyTree, createStressTree } from './lib/generators'
 import { computeLayout } from './lib/treeLayout'
@@ -194,7 +195,7 @@ export default function App() {
     const parent = index.get(parentId)?.node
     const result =
       parent?.type === 'member' ? addChildToHusband(root, parentId, gender, name) : addChild(root, parentId, gender, name)
-    if (!result) return notify('تم بلوغ الحد الأقصى للأجيال (15)', true)
+    if (!result) return notify(parent && parent.generation >= MAX_GENERATION ? `تم بلوغ الحد الأقصى للأجيال (${MAX_GENERATION})` : 'لا يمكن إضافة ابن هنا', true)
     commit(() => result.root)
     setSelectedId(result.id)
   }
@@ -259,7 +260,7 @@ export default function App() {
                   setConfirm({
                     message: `سيتم حذف «${index.get(id)?.node.name}»${
                       index.get(id)?.descendants ? ` مع ${index.get(id)?.descendants} من الذرية` : ''
-                    }. لا يمكن التراجع.`,
+                    }. يمكنك التراجع بـ Ctrl+Z.`,
                     action: () => handleDelete(id),
                   })
                 }

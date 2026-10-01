@@ -6,7 +6,7 @@ import type { D3ZoomEvent, ZoomBehavior, ZoomTransform } from 'd3-zoom'
 import { Crosshair, Minus, Plus } from 'lucide-react'
 import { cardHalf, hitTest } from '../lib/treeLayout'
 import type { Box, LayoutLink, LayoutNode, TreeLayout } from '../lib/treeLayout'
-import Branch, { MIN_SCREEN_WIDTH, WOOD } from './Branch'
+import Branch, { Bark, MIN_SCREEN_WIDTH, WOOD } from './Branch'
 import Foliage from './Foliage'
 import NodeCard from './NodeCard'
 import Trunk, { TRUNK_DEPTH, TRUNK_HALF_WIDTH } from './Trunk'
@@ -20,6 +20,8 @@ const CULL_MARGIN = 1
 const CULL_INTERVAL_MS = 120
 /** Half-extent of the largest card (plus its foliage), for node culling. */
 const NODE_REACH = 120
+/** Below this zoom the bark veins are under a pixel wide and are not drawn. */
+const FAR_ZOOM = 0.05
 /** A press that travels further than this (CSS px) was a pan, not a tap. */
 const TAP_SLOP = 10
 /** Screen-px of forgiveness around a card, so cards stay tappable at a zoomed-out fit. */
@@ -72,6 +74,12 @@ const BranchesLayer = memo(function BranchesLayer({ links }: { links: LayoutLink
       {links.map(({ id, knot: [x, y, r] }) => (
         <circle key={id} cx={x} cy={y} r={r} fill={WOOD} />
       ))}
+      {/* Too fine to see when far out (see FAR_ZOOM), so it is switched off there. */}
+      <g className="bark-layer">
+        {links.map(({ id, bark }) => (
+          <Bark key={id} {...bark} />
+        ))}
+      </g>
     </g>
   )
 })
@@ -177,11 +185,14 @@ export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onR
       if (!ring) continue
       // Anchored on the label's right edge; the width is only known once it is on the page.
       const x = t.x + ring.x * t.k
-      const y = t.y + ring.y * t.k
       const w = span.offsetWidth || 60
-      const show = shown.every(([sx, sy, sw]) => Math.abs(sy - y) >= LABEL_GAP || x <= sx - sw || x - w >= sx)
+      const free = (y: number) => shown.every(([sx, sy, sw]) => Math.abs(sy - y) >= LABEL_GAP || x <= sx - sw || x - w >= sx)
+      // A crowded label steps up (outward, where its generation grows) before it gives up and hides.
+      const at = t.y + ring.y * t.k
+      const y = [0, 1, 2].map((step) => at - step * LABEL_GAP).find(free)
+      const show = y !== undefined
       span.style.visibility = show ? '' : 'hidden'
-      span.style.transform = `translate(${x}px, ${y}px) translate(-100%, -50%)`
+      span.style.transform = `translate(${x}px, ${y ?? at}px) translate(-100%, -50%)`
       if (show) shown.push([x, y, w])
     }
   }, [])
@@ -239,6 +250,7 @@ export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onR
         // Pan/zoom only rewrites the viewport transform; the memoised layers never re-render.
         transformRef.current = event.transform
         viewport.setAttribute('transform', event.transform.toString())
+        viewport.classList.toggle('far', event.transform.k < FAR_ZOOM)
         placeActions(event.transform)
         placeLabels(event.transform)
         setZoomPercent(Math.round(event.transform.k * 100))

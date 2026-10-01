@@ -107,6 +107,21 @@ export function toggleCollapse(root: TreeNode, id: string): TreeNode {
   )
 }
 
+/** Gives `target` the folds `source` has, for every person in both (others keep their own). */
+export function keepFolds(target: TreeNode, source: TreeNode): TreeNode {
+  const folded = new Map<string, boolean>()
+  const visit = (n: TreeNode) => {
+    folded.set(n.id, !!n.collapsed)
+    n.children.forEach(visit)
+  }
+  visit(source)
+  return transform(target, (node) => {
+    const want = folded.get(node.id)
+    if (want === undefined || want === !!node.collapsed || !node.children.length) return node
+    return { ...node, collapsed: want || undefined }
+  })
+}
+
 export function expandAll(root: TreeNode): TreeNode {
   return transform(root, (node) => (node.collapsed ? { ...node, collapsed: false } : node))
 }
@@ -200,11 +215,11 @@ export function addChildToHusband(
 
 export function deleteNode(root: TreeNode, id: string): TreeNode {
   if (root.id === id) return root
-  return transform(root, (node) =>
-    node.children.some((c) => c.id === id)
-      ? { ...node, children: node.children.filter((c) => c.id !== id) }
-      : node,
-  )
+  return transform(root, (node) => {
+    // An unknown mother only exists to hold children, so one left empty goes too.
+    const children = node.children.filter((c) => c.id !== id && !(c.unknown && !c.children.length))
+    return children.length === node.children.length ? node : { ...node, children }
+  })
 }
 
 export function maxGeneration(index: TreeIndex): number {

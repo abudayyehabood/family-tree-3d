@@ -1,4 +1,5 @@
 import type { TreeNode } from '../model'
+import { keepFolds } from './tree'
 
 /** How many past trees to keep. Entries share structure, so the real cost is far below the count. */
 const HISTORY_LIMIT = 60
@@ -36,12 +37,13 @@ export function historyReducer(state: HistoryState, action: HistoryAction): Hist
     case 'undo': {
       const previous = state.past.at(-1)
       if (!previous) return state
-      return { root: previous, past: state.past.slice(0, -1), future: [state.root, ...state.future].slice(0, HISTORY_LIMIT) }
+      // Folds are a view, not an edit: the restored tree keeps whatever is open right now.
+      return { root: keepFolds(previous, state.root), past: state.past.slice(0, -1), future: [state.root, ...state.future].slice(0, HISTORY_LIMIT) }
     }
     case 'redo': {
       const [next, ...rest] = state.future
       if (!next) return state
-      return { root: next, past: [...state.past, state.root].slice(-HISTORY_LIMIT), future: rest }
+      return { root: keepFolds(next, state.root), past: [...state.past, state.root].slice(-HISTORY_LIMIT), future: rest }
     }
   }
 }
