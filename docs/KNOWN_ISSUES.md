@@ -5,18 +5,22 @@ small demo family). Tests, typecheck, lint and the layout fuzz run are all green
 
 ## Open
 
-1. **Trunk and limbs are different wood.** The trunk uses the `woodTrunk` gradient (dark edges,
-   light middle) while branches are flat `WOOD` with bark drawn over it, so the trunk top looks a
-   shade lighter than the gen-1 limbs. *Fix:* make the gradient's middle stops closer to `WOOD`,
-   or draw the bark highlight on the trunk column too.
+None known.
 
-2. **The crown leans.** Big families on one side make the canopy lopsided (on seed-tested 700-person
-   trees the right side grows much taller than the left). *Fix:* weight `SPREAD` in
-   `computeLayout` by subtree size, so heavy families take angle from both sides of the trunk.
+## Fixed (2026-10-03)
 
-3. **Cards are unreadable when the whole tree fits.** The 700-person tree is about 25k × 35k units,
-   so fit-to-screen is around 2% zoom and the cards are specks. *Fix:* below about 10% zoom, draw
-   one dot per card and only label the first 3 generations; show the full cards once zoomed in.
+- **Limbs ran far longer than they needed.** Every generation sat on one shared ring, so one limb that
+  had to swing far sideways (or one crowded corner) pushed the whole ring out and lengthened every limb
+  of that generation. After the rings settle, `pullIn` slides each family back in along its angle as far
+  as its own limb's length and turn allow, without touching another card or crossing another limb.
+  On the 700-person tree limbs are about 2.7× shorter and the crown about half the size.
+- **The crown leaned.** The fan was centred on the middle of the family's span, so one big family
+  made the canopy lopsided. It now centres on where the people are (`BALANCE`).
+- **Trunk and limbs were different wood.** The trunk gradient now runs through the limbs' `WOOD`.
+- **Cards were specks when the whole tree fits.** Below 10% zoom every card is a coloured dot of fixed
+  screen size (green son, pink daughter, amber wife); the selected card stays a full card.
+- **There was no way back from "open all".** "طي حتى الجيل 4" folds the tree back to generation 4
+  (3 on a phone), the same view a new 700-person tree opens with.
 
 ## Fixed (2026-10-01)
 

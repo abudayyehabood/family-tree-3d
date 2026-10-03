@@ -22,6 +22,9 @@ const CULL_INTERVAL_MS = 120
 const NODE_REACH = 120
 /** Below this zoom the bark veins are under a pixel wide and are not drawn. */
 const FAR_ZOOM = 0.05
+/** Below this zoom cards are drawn as dots of DOT_PX screen radius (cards are then a few pixels wide). */
+const DOT_ZOOM = 0.1
+const DOT_PX = 3.5
 /** A press that travels further than this (CSS px) was a pan, not a tap. */
 const TAP_SLOP = 10
 /** Screen-px of forgiveness around a card, so cards stay tappable at a zoomed-out fit. */
@@ -187,9 +190,9 @@ export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onR
       const x = t.x + ring.x * t.k
       const w = span.offsetWidth || 60
       const free = (y: number) => shown.every(([sx, sy, sw]) => Math.abs(sy - y) >= LABEL_GAP || x <= sx - sw || x - w >= sx)
-      // A crowded label steps up (outward, where its generation grows) before it gives up and hides.
+      // A crowded label steps up or down beside its generation (up first: that is where it grows) before it gives up and hides.
       const at = t.y + ring.y * t.k
-      const y = [0, 1, 2].map((step) => at - step * LABEL_GAP).find(free)
+      const y = [0, -0.5, 0.5, -1, 1, -1.5, -2].map((step) => at + step * LABEL_GAP).find(free)
       const show = y !== undefined
       span.style.visibility = show ? '' : 'hidden'
       span.style.transform = `translate(${x}px, ${y ?? at}px) translate(-100%, -50%)`
@@ -251,6 +254,9 @@ export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onR
         transformRef.current = event.transform
         viewport.setAttribute('transform', event.transform.toString())
         viewport.classList.toggle('far', event.transform.k < FAR_ZOOM)
+        viewport.classList.toggle('tiny', event.transform.k < DOT_ZOOM)
+        // Fixed size on screen, but never so big that neighbours' dots merge into one blot.
+        viewport.style.setProperty('--dot-r', `${Math.min(80, DOT_PX / event.transform.k)}px`)
         placeActions(event.transform)
         placeLabels(event.transform)
         setZoomPercent(Math.round(event.transform.k * 100))
@@ -471,9 +477,9 @@ export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onR
         <defs>
           <linearGradient id="woodTrunk" x1="0" x2="1" y1="0" y2="0">
             <stop offset="0" stopColor="#2a1609" />
-            <stop offset="0.18" stopColor="#5a371d" />
-            <stop offset="0.42" stopColor="#94623a" />
-            <stop offset="0.58" stopColor="#7a4c2a" />
+            <stop offset="0.18" stopColor="#4f2f17" />
+            <stop offset="0.42" stopColor="#7e5230" />
+            <stop offset="0.58" stopColor="#6b4423" />
             <stop offset="0.85" stopColor="#452812" />
             <stop offset="1" stopColor="#24130a" />
           </linearGradient>

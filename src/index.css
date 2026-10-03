@@ -39,3 +39,17 @@ body {
 .far .bark-layer {
   display: none;
 }
+
+/* Far out a card is a few pixels wide: it becomes a coloured dot of fixed screen size (--dot-r is set on zoom). */
+.tree-canvas .card-dot {
+  display: none;
+}
+
+.tiny .node-card:not(.is-selected) > :not(.card-dot) {
+  display: none;
+}
+
+.tiny .node-card:not(.is-selected) > .card-dot {
+  display: inline;
+  r: var(--dot-r, 60px);
+}

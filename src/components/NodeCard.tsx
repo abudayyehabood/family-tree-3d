@@ -78,13 +78,23 @@ function GenerationTag({ generation, top }: { generation: number; top: number })
   )
 }
 
+/** Colour of a card's stand-in dot when zoomed far out: the card's own colour, so families still read. */
+const dotColour = (type: NodeType, gender: Gender, isRoot: boolean) =>
+  isRoot ? '#7c2d12' : type === 'wife' ? '#d97706' : gender === 'female' ? '#db2777' : '#2f6b2a'
+
+/** Only shown far out (see `.tiny` in index.css), where a card is a few pixels and a dot reads better. */
+function CardDot({ fill }: { fill: string }) {
+  return <circle className="card-dot" r={60} fill={fill} stroke="#fff" strokeOpacity={0.8} strokeWidth={1} vectorEffect="non-scaling-stroke" />
+}
+
 function NodeCard(props: NodeCardProps) {
   const { id, type, gender, name, generation, born, died, husband, x, y, isRoot, collapsed, childCount, hiddenCount, selected } = props
   const years = yearsLabel(born, died)
 
   if (type === 'wife') {
     return (
-      <g className="node-card" data-node-id={id} transform={`translate(${x},${y})`}>
+      <g className={selected ? 'node-card is-selected' : 'node-card'} data-node-id={id} transform={`translate(${x},${y})`}>
+        <CardDot fill={dotColour(type, gender, isRoot)} />
         {selected && <rect x={-WW - 6} y={-WH - 6} width={WIFE_W + 12} height={WIFE_H + 12} rx={WH + 6} fill="#fde047" fillOpacity={0.5} stroke="#2563eb" strokeWidth={3} />}
         <rect x={-WW} y={-WH} width={WIFE_W} height={WIFE_H} rx={WH} fill="url(#cardWife)" stroke="#92400e" strokeWidth={2} />
         {/* Wedding ring with a small flower on top. */}
@@ -120,7 +130,8 @@ function NodeCard(props: NodeCardProps) {
     // A married daughter and her husband: two wife-sized pills locked together like ∞ (hers on the right).
     const cx = COUPLE_W / 2 - WW
     return (
-      <g className="node-card" data-node-id={id} transform={`translate(${x},${y})`}>
+      <g className={selected ? 'node-card is-selected' : 'node-card'} data-node-id={id} transform={`translate(${x},${y})`}>
+        <CardDot fill={dotColour(type, gender, isRoot)} />
         {selected && <rect x={-COUPLE_W / 2 - 6} y={-WH - 6} width={COUPLE_W + 12} height={WIFE_H + 12} rx={WH + 6} fill="#fde047" fillOpacity={0.5} stroke="#2563eb" strokeWidth={3} />}
         <rect x={-cx - WW} y={-WH} width={WIFE_W} height={WIFE_H} rx={WH} fill="#e0f2fe" stroke="#0369a1" strokeWidth={2} />
         <rect x={cx - WW} y={-WH} width={WIFE_W} height={WIFE_H} rx={WH} fill="url(#cardFemale)" stroke="#be185d" strokeWidth={2} />
@@ -147,7 +158,8 @@ function NodeCard(props: NodeCardProps) {
   const textColor = female && !isRoot ? '#4a0f2a' : '#ffffff'
 
   return (
-    <g className="node-card" data-node-id={id} transform={`translate(${x},${y})`}>
+    <g className={selected ? 'node-card is-selected' : 'node-card'} data-node-id={id} transform={`translate(${x},${y})`}>
+        <CardDot fill={dotColour(type, gender, isRoot)} />
       {selected && <path d={SELECTED_LEAF} fill="#fde047" fillOpacity={0.55} stroke="#2563eb" strokeWidth={3} />}
       <path d={MEMBER_LEAF} fill={fill} stroke={isRoot ? '#f2c14e' : female ? '#be185d' : '#d9f99d'} strokeWidth={isRoot ? 3 : 2} />
       {/* Leaf vein. */}
