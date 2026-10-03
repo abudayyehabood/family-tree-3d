@@ -295,3 +295,11 @@ export function collapseFromGeneration(root: TreeNode, generation: number): Tree
       : node,
   )
 }
+
+/** Shows exactly generations 1…`generation`: everything above it opens, every member from it on folds. */
+export function foldToGeneration(root: TreeNode, generation: number): TreeNode {
+  return transform(root, (node) => {
+    const want = node.type === 'member' && node.generation >= generation && node.children.length > 0
+    return want === !!node.collapsed ? node : { ...node, collapsed: want || undefined }
+  })
+}

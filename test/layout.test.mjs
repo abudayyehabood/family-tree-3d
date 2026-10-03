@@ -7,7 +7,7 @@ const jiti = createJiti(import.meta.url)
 const R = new URL('../src/', import.meta.url).pathname
 const { computeLayout, cardHalf } = await jiti.import(R + 'lib/treeLayout.ts')
 const { createStressTree } = await jiti.import(R + 'lib/generators.ts')
-const { buildIndex, expandAll } = await jiti.import(R + 'lib/tree.ts')
+const { buildIndex, expandAll, foldToGeneration } = await jiti.import(R + 'lib/tree.ts')
 
 for (const seed of [20260926, 42]) {
   test(`700-person crown (seed ${seed}): no overlapping cards`, () => {
@@ -69,4 +69,17 @@ test('every branch leads back to the founder, and each generation gets one label
   const gens = layout.rings.map((r) => r.generation)
   assert.deepEqual(gens, [...new Set(gens)].sort((a, b) => a - b))
   assert.equal(gens.length, 14, 'generations 2–15')
+})
+
+test('folding to a generation shows exactly the generations above it', () => {
+  const root = foldToGeneration(expandAll(createStressTree(7)), 4)
+  const shown = []
+  const walk = (n) => {
+    shown.push(n.generation)
+    if (!n.collapsed) n.children.forEach(walk)
+  }
+  walk(root)
+  assert.equal(Math.max(...shown), 4)
+  const again = foldToGeneration(root, 4)
+  assert.equal(again, root, 'folding twice changes nothing')
 })

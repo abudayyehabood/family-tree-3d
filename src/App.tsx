@@ -15,6 +15,7 @@ import {
   collapseFromGeneration,
   deleteNode,
   expandAll,
+  foldToGeneration,
   expandNodes,
   nameUnknownMother,
   maxGeneration,
@@ -229,6 +230,11 @@ export default function App() {
         onExpandAll={() => {
           pendingFitRef.current = 'animated'
           dispatch({ type: 'view', update: expandAll })
+        }}
+        foldGeneration={collapseFromGenerationForScreen()}
+        onFold={() => {
+          pendingFitRef.current = 'animated'
+          dispatch({ type: 'view', update: (r) => foldToGeneration(r, collapseFromGenerationForScreen()) })
         }}
         onDemo={() => askReplace('عائلة تجريبية صغيرة', createDemoFamily, (n) => `تم تحميل عائلة تجريبية (${n} شخص)`)}
         onReset={() => askReplace('شجرة جديدة فارغة', createEmptyTree, () => 'تم إنشاء شجرة جديدة')}
