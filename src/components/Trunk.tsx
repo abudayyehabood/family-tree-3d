@@ -3,7 +3,6 @@ import { taperedBranchPath } from '../lib/geometry'
 
 /** Lowest point of the hill at scale 1. */
 export const TRUNK_DEPTH = 285
-export const TRUNK_HALF_WIDTH = 380
 
 /** Surface roots: [startX, startY, endX, endY, startWidth, endWidth]. */
 const ROOTS: Array<[number, number, number, number, number, number]> = [

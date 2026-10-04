@@ -5,12 +5,28 @@ small demo family). Tests, typecheck, lint and the layout fuzz run are all green
 
 ## Open
 
-- **Laying out the full 700-person tree takes about 1.1s** (was 0.35s before `pullIn`). Fine for an
-  "open all" click; worth moving `computeLayout` into a worker if trees get much bigger.
-- **A limb can still be long where its child sits far to the side** of its parent (a big family's centre
-  is far from its parent's angle). The limb needs that length to climb at a slant instead of running flat.
+- **Laying out the full 700-person tree takes about 1.5s** (0.35s before `pullIn`; the limb-under-card
+  and crossing checks cost the rest). Fine for an "open all" click; move `computeLayout` into a worker
+  if trees get much bigger.
+- **With everything open, a big family far to the side still hangs off one long limb.** A family sits at
+  the centre of its descendants, so the limb to it must reach that far; it climbs at a slant, but it is long.
+- **Adding one person to a fully open big tree moves many cards.** The layout is global (rings, even
+  spreading), so a new card in a crowded ring shifts its neighbours. Folded views barely move.
+- **Generation labels are large next to a tiny tree on a phone at 1–5% zoom** and cover the left
+  branch; crowded ones hide.
 
 ## Fixed (2026-10-04)
+
+- **A child added to an older generation could grow sideways or downhill.** Near the trunk the rings are
+  small, so a card far round one sat level with (or below) its parent. Inner generations now fan out less
+  (`fanOf`), and a ring moves out until each limb climbs at least a third of its sideways reach (`CLIMB`).
+- **Limbs ran under other cards** after `pullIn` (8 in the small demo, ~250 with 700 open; 0 before it).
+  `pullIn` now rejects any move that puts a limb under a card or a card on a limb. Tested.
+- **Two wives of the founder stacked one behind the other.** A ring only splits into two rows from 4 cards.
+- **On a phone the fitted tree used half the screen.** The fit now frames the crown and roots, not the
+  whole hill, with a narrow margin.
+- **The desktop search box shrank to a stub** at 1024–1535px. Tool labels show from 1536px; below that
+  the buttons are icons with tooltips.
 
 - **Branches were as thick as their generation, not their family.** A childless daughter of the founder
   got a limb as thick as her brother's that carries hundreds. Width now grows with the square root of

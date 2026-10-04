@@ -84,6 +84,14 @@ const DEG = Math.PI / 180
  * the crown is round like an oak instead of a flat fan.
  */
 const MAX_THETA = 70 * DEG
+/**
+ * Inner generations fan out less: near the trunk a ring is small, so a card far round it would sit
+ * level with (or below) its parent and its limb would run sideways or down. The fan opens up with each
+ * generation, the way a real tree's first limbs climb before they spread.
+ */
+const INNER_FAN = 0.5
+const FAN_GROWTH = 0.25
+const fanOf = (generation: number) => MAX_THETA * Math.min(1, INNER_FAN + FAN_GROWTH * Math.max(0, generation - 1))
 /** Room between a generation label and the card it names. */
 const LABEL_GAP = 16
 /** How strongly a full ring spreads its cards evenly over the fan (0 = tidy tree only). */
@@ -118,6 +126,8 @@ const RING_BUMP = 16
  * (More rows gain nothing: a branch to an outer row must still pass between the inner-row cards.)
  */
 const LANE_STEP = MEMBER_H + PAD_Y + 10
+/** A ring needs at least this many cards before it is split into two rows. */
+const MIN_LANE_CARDS = 4
 const MAX_ATTEMPTS = 120
 
 /** Branch width: the trunk top for the founder, then 25% thinner every generation. */
@@ -147,6 +157,29 @@ const WIFE_LIMB_LENGTH = 1.3
 const TURN_SLOPE = 0.8
 /** …but never more than this per ring, or rings whose limbs all turn far would push the crown out without end. */
 const MAX_TURN_ROOM = 3000
+/** A card sits at least this much higher than its parent per unit it sits to the side (no flat or falling limbs). */
+const CLIMB = 0.35
+
+/** Most a ring is pushed out so its limbs climb (more would stretch the whole crown for one card). */
+const MAX_CLIMB_ROOM = 600
+
+/**
+ * How much further out (radially) card b must sit for its limb from a to climb at CLIMB. Far round the
+ * flank moving out mostly moves sideways and cannot help, so there it asks for nothing.
+ */
+function climbRoom(a: { x: number; y: number }, b: { x: number; y: number; theta: number }): number {
+  const rise = a.y - b.y
+  const side = b.x - a.x
+  if (rise >= CLIMB * Math.abs(side)) return 0
+  // Moving b out by Δ along its angle raises it by Δ·c and shifts it sideways by Δ·s.
+  const c = dome(b.theta) * Math.cos(b.theta)
+  const s = dome(b.theta) * Math.sin(b.theta)
+  const away = Math.sign(side) === Math.sign(s) ? Math.abs(s) : -Math.abs(s)
+  const gain = c - CLIMB * away
+  if (gain < 0.12) return 0
+  return Math.min(MAX_CLIMB_ROOM, (CLIMB * Math.abs(side) - rise) / gain + 1)
+}
+
 /** How far along the limb its ends keep their heading (fraction of the limb's length). */
 const LIMB_BEND = 0.4
 /** A limb leaves its parent between "straight at the child" (0) and "straight outward" (large). */
@@ -155,7 +188,7 @@ const LEAVE_UP = 0.6
 const ARRIVE_LEAN = 0.35
 
 /** Times `pullIn` sweeps the crown (it stops early once nothing moves). */
-const PULL_PASSES = 3
+const PULL_PASSES = 2
 
 /** Points sampled along each branch's centre-line. */
 const BRANCH_SAMPLES = 16
@@ -288,7 +321,7 @@ function findCollisions(all: HierarchyNode<TreeNode>[], polar: Map<string, Polar
  * With u[i] = t[i] − (gaps[0] + … + gaps[i-1]) the gap rule becomes "u never decreases", which
  * pool-adjacent-violators solves exactly: runs that break the order are merged into their mean.
  */
-function relaxAngles(thetas: number[], gaps: number[]): number[] {
+function relaxAngles(thetas: number[], gaps: number[], limit: number): number[] {
   const offset = [0]
   for (const g of gaps) offset.push(offset[offset.length - 1] + g)
   const pools: Array<{ mean: number; count: number }> = []
@@ -302,10 +335,10 @@ function relaxAngles(thetas: number[], gaps: number[]): number[] {
     }
     pools.push({ mean, count })
   })
-  const hi = MAX_THETA - offset[offset.length - 1]
+  const hi = limit - offset[offset.length - 1]
   const out: number[] = []
   for (const { mean, count } of pools) {
-    const u = Math.min(hi, Math.max(-MAX_THETA, mean))
+    const u = Math.min(hi, Math.max(-limit, mean))
     for (let k = 0; k < count; k++) out.push(u + offset[out.length])
   }
   return out
@@ -342,6 +375,8 @@ export function computeLayout(data: TreeNode, index: TreeIndex): TreeLayout {
   const laneSpread = levels.map(() => 0)
   /** Extra factor on the gap after a card (d3 order), grown where two cards of one ring still touch. */
   const boost = new Map<string, number>()
+  /** Half-angle of each ring's fan (see `fanOf`). */
+  const fan = levels.map((ring) => fanOf(ring.find((n) => !n.data.unknown)?.data.generation ?? 1))
   const ringOrder = levels.map((ring) => ring.filter((n) => !n.data.unknown).map((n) => n.data.id))
   /** People on a branch: the card and everyone above it, folded away or not. */
   const weight = (n: HierarchyNode<TreeNode>) => 1 + (index.get(n.data.id)?.descendants ?? 0)
@@ -416,8 +451,9 @@ export function computeLayout(data: TreeNode, index: TreeIndex): TreeLayout {
       const cards = level.filter((n) => !n.data.unknown && n.parent)
       let need = 0
       for (let k = 1; k < cards.length; k++) need += pairAngle(cards[k - 1], cards[k])
-      const ratio = need / (2 * MAX_THETA * RING_FILL)
-      if (ratio > 1 && lanes[d] === 1) {
+      const ratio = need / (2 * fan[d] * RING_FILL)
+      // Two rows only pay off in a crowd: with a few cards the outer one would sit right behind the inner.
+      if (ratio > 1 && lanes[d] === 1 && cards.length >= MIN_LANE_CARDS) {
         lanes[d] = 2
         laneSpread[d] = Math.max(laneSpread[d], LANE_STEP)
         placeRings()
@@ -456,19 +492,21 @@ export function computeLayout(data: TreeNode, index: TreeIndex): TreeLayout {
       const cards = level.filter((n) => !n.data.unknown && n.parent).reverse()
       if (!cards.length) return
       const gaps = cards.slice(1).map((n, k) => laneGap(cards[k], n) * (boost.get(n.data.id) ?? 1))
-      if (gaps.reduce((s, g) => s + g, 0) > 2 * MAX_THETA) crowded.push(depth)
+      const limit = fan[depth]
+      if (gaps.reduce((s, g) => s + g, 0) > 2 * limit) crowded.push(depth)
       // Fill the holes shallow families leave: a crowded ring leans towards spreading its cards evenly
       // over the fan (keeping their order, so limbs still cannot cross); a sparse ring keeps the tidy angles.
       const total = gaps.reduce((s, g) => s + g, 0)
-      const lean = total > 0 ? SPREAD * Math.min(1, total / (2 * MAX_THETA)) : 0
+      const lean = total > 0 ? SPREAD * Math.min(1, total / (2 * limit)) : 0
       let before = 0
       const relaxed = relaxAngles(
         cards.map((n, k) => {
-          const even = -MAX_THETA + (2 * MAX_THETA * before) / (total || 1)
+          const even = -limit + (2 * limit * before) / (total || 1)
           before += gaps[k] ?? 0
-          return (1 - lean) * toTheta(n.x!) + lean * even
+          return (1 - lean) * toTheta(n.x!) * (limit / MAX_THETA) + lean * even
         }),
         gaps,
+        limit,
       )
       cards.forEach((n, k) => thetas.set(n.data.id, relaxed[k]))
     })
@@ -509,6 +547,8 @@ export function computeLayout(data: TreeNode, index: TreeIndex): TreeLayout {
     for (const d of crowded) extra[d] += RING_BUMP / grow
     // A limb that must turn far needs radial room to do it, or it wraps along the ring like an arch.
     const turnRoom = levels.map(() => 0)
+    /** …and a card off to the side of its parent must still sit above it. */
+    const climbNeed = levels.map(() => 0)
     for (const n of all) {
       const from = n.parent?.data.unknown ? n.parent.parent : n.parent
       if (!from?.parent || n.data.unknown) continue
@@ -518,11 +558,13 @@ export function computeLayout(data: TreeNode, index: TreeIndex): TreeLayout {
       const [ux, uy] = outward(a, outerRadius * FOCUS_DEPTH)
       const sideways = Math.abs(ux * (b.y - a.y) - uy * (b.x - a.x))
       turnRoom[n.depth] = Math.max(turnRoom[n.depth], Math.min(MAX_TURN_ROOM, sideways * TURN_SLOPE))
+      climbNeed[n.depth] = Math.max(climbNeed[n.depth], climbRoom(a, b))
     }
     turnRoom.forEach((need, d) => {
       const room = grow * (limbStep(d) + extra[d])
-      if (need > room + 1) {
-        extra[d] += (need - room) / grow
+      const more = Math.max(need - room, climbNeed[d])
+      if (more > 1) {
+        extra[d] += more / grow
         moved = true
       }
     })
@@ -730,7 +772,24 @@ function pullIn(all: HierarchyNode<TreeNode>[], polar: Map<string, Polar>, minLe
   const side = (p: Point, q: Point, r: Point) => (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0])
   const cross = (p: Point, q: Point, r: Point, t: Point) => side(p, q, r) * side(p, q, t) < 0 && side(r, t, p) * side(r, t, q) < 0
   /** Interiors only: limbs meeting at a fork or a card touch there by design. */
+  const boxes = new WeakMap<Point[], Box>()
+  const boxOf = (pts: Point[]) => {
+    let box = boxes.get(pts)
+    if (!box) {
+      box = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity }
+      for (let i = 1; i < pts.length - 1; i++) {
+        box.minX = Math.min(box.minX, pts[i][0])
+        box.maxX = Math.max(box.maxX, pts[i][0])
+        box.minY = Math.min(box.minY, pts[i][1])
+        box.maxY = Math.max(box.maxY, pts[i][1])
+      }
+      boxes.set(pts, box)
+    }
+    return box
+  }
   const tangled = (a: Point[], b: Point[]) => {
+    const [p, q] = [boxOf(a), boxOf(b)]
+    if (p.maxX < q.minX || q.maxX < p.minX || p.maxY < q.minY || q.maxY < p.minY) return false
     for (let u = 1; u < a.length - 2; u++) for (let v = 1; v < b.length - 2; v++) if (cross(a[u], a[u + 1], b[v], b[v + 1])) return true
     return false
   }
@@ -760,7 +819,7 @@ function pullIn(all: HierarchyNode<TreeNode>[], polar: Map<string, Polar>, minLe
         const nb = moved(n.data.id, shift)
         // The limb still needs room to turn towards a card off to its side.
         const sideways = Math.abs(ux * (nb.y - a.y) - uy * (nb.x - a.x))
-        if (nb.r - a.r < Math.min(MAX_TURN_ROOM, sideways * TURN_SLOPE)) continue
+        if (nb.r - a.r < Math.min(MAX_TURN_ROOM, sideways * TURN_SLOPE) || climbRoom(a, nb) > 1) continue
         // Cards already settled this round, so the family's own cards never land on each other either.
         const ownCards = new Map<string, Polar[]>()
         const free = (p: Polar) => {
@@ -802,25 +861,79 @@ function pullIn(all: HierarchyNode<TreeNode>[], polar: Map<string, Polar>, minLe
         }
         if (hits) continue
         const pos = (id: string) => at.get(id) ?? polar.get(id)!
+        // A limb's shape depends on its child, its parent and the grandparent (the way it leaves): only
+        // limbs where one of those moved are redrawn and checked.
+        const changed = new Set<string>()
+        for (const m of family) {
+          const c = m.data.id
+          const parent = parentOf.get(c)
+          if (parent && (at.has(c) || at.has(parent) || at.has(parentOf.get(parent) ?? ''))) changed.add(c)
+        }
+        // Cheapest first: a card that moved must not land on a limb that stays put.
+        const landsOnLimb = [...at].some(([id, p]) => {
+          if (!p.w) return false
+          const near = new Set<string>()
+          for (let gx = Math.floor((p.x - p.w / 2) / CELL); gx <= Math.floor((p.x + p.w / 2) / CELL); gx++)
+            for (let gy = Math.floor((p.y - p.h / 2) / CELL); gy <= Math.floor((p.y + p.h / 2) / CELL); gy++)
+              for (const other of limbCells.get(`${gx},${gy}`) ?? []) if (!changed.has(other) && other !== id && parentOf.get(other) !== id) near.add(other)
+          for (const other of near) {
+            const pts = shapes.get(other)!
+            for (let i = 1; i < pts.length - 1; i++) if (Math.abs(pts[i][0] - p.x) < p.w / 2 && Math.abs(pts[i][1] - p.y) < p.h / 2) return true
+          }
+          return false
+        })
+        if (landsOnLimb) continue
         const curves = new Map<string, Point[]>()
-        // Moving along the dome is not rigid, so the family's own limbs are checked against each other too.
+        // Moving along the dome is not rigid, so the redrawn limbs are checked against each other too.
         const ownCells = new Map<string, string[]>()
-        const crossing = family.some((m) => {
-          if (!parentOf.has(m.data.id)) return false
-          const pts = curve(m.data.id, pos)
-          curves.set(m.data.id, pts)
+        const crossing = [...changed].some((c) => {
+          const pts = curve(c, pos)
+          curves.set(c, pts)
           const near = new Set<string>()
           for (const key of cellsOfCurve(pts)) {
-            for (const other of limbCells.get(key) ?? []) if (!ids.has(other)) near.add(other)
+            for (const other of limbCells.get(key) ?? []) if (!changed.has(other)) near.add(other)
             for (const other of ownCells.get(key) ?? []) near.add(other)
             const own = ownCells.get(key)
-            if (own) own.push(m.data.id)
-            else ownCells.set(key, [m.data.id])
+            if (own) own.push(c)
+            else ownCells.set(key, [c])
           }
           for (const other of near) if (tangled(pts, curves.get(other) ?? shapes.get(other)!)) return true
           return false
         })
         if (crossing) continue
+        // No limb may run under a card it does not belong to (cards hide it, and it reads as growing from there).
+        const movedCards = new Map<string, string[]>()
+        for (const [id, p] of at) {
+          if (!p.w) continue
+          const key = cellOf(p.x, p.y)
+          const cell = movedCards.get(key)
+          if (cell) cell.push(id)
+          else movedCards.set(key, [id])
+        }
+        const covered = (pts: Point[], child: string) => {
+          const parent = parentOf.get(child)
+          for (let i = 1; i < pts.length - 1; i++) {
+            const [x, y] = pts[i]
+            // Only cells a card centred there could reach (cards are at most COUPLE_W wide, MEMBER_H tall).
+            for (let gx = Math.floor((x - COUPLE_W / 2) / CELL); gx <= Math.floor((x + COUPLE_W / 2) / CELL); gx++)
+              for (let gy = Math.floor((y - MEMBER_H / 2) / CELL); gy <= Math.floor((y + MEMBER_H / 2) / CELL); gy++) {
+                const key = `${gx},${gy}`
+                // Moving cards are looked up where they are going, everyone else where they are.
+                for (const other of cards.get(key) ?? []) {
+                  if (other === child || other === parent || at.has(other)) continue
+                  const q = polar.get(other)!
+                  if (Math.abs(x - q.x) < q.w / 2 && Math.abs(y - q.y) < q.h / 2) return true
+                }
+                for (const other of movedCards.get(key) ?? []) {
+                  if (other === child || other === parent) continue
+                  const q = at.get(other)!
+                  if (Math.abs(x - q.x) < q.w / 2 && Math.abs(y - q.y) < q.h / 2) return true
+                }
+              }
+          }
+          return false
+        }
+        if ([...curves].some(([child, pts]) => covered(pts, child))) continue
         for (const [id, p] of at) {
           const old = polar.get(id)!
           if (old.w) cards.get(cellOf(old.x, old.y))!.delete(id)

@@ -9,7 +9,7 @@ import type { Box, LayoutLink, LayoutNode, TreeLayout } from '../lib/treeLayout'
 import Branch, { Bark, MIN_SCREEN_WIDTH, WOOD } from './Branch'
 import Foliage from './Foliage'
 import NodeCard from './NodeCard'
-import Trunk, { TRUNK_DEPTH, TRUNK_HALF_WIDTH } from './Trunk'
+import Trunk, { TRUNK_DEPTH } from './Trunk'
 
 /** Low enough to fit a fully expanded 700-person tree on a phone. */
 const MIN_SCALE = 0.005
@@ -34,6 +34,8 @@ const TAP_PAD = 12
 const LABEL_GAP = 22
 /** Screen room (px) the whole-tree fit keeps left of the tree for generation labels. */
 const LABEL_ROOM = 80
+/** Half the width of the trunk's spread roots, which a fit always keeps on screen. */
+const ROOTS_HALF_WIDTH = 220
 /** Gold of the selected person's line back to the trunk. */
 const LINEAGE = '#f59e0b'
 
@@ -314,11 +316,13 @@ export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onR
       if (!svg) return
       autoFitRef.current = true
       const { bounds, trunkScale } = layoutRef.current
-      const left = Math.min(bounds.minX, -TRUNK_HALF_WIDTH * trunkScale)
-      const right = Math.max(bounds.maxX, TRUNK_HALF_WIDTH * trunkScale)
+      // Frame the crown and the trunk's roots; the grassy hill may run off the sides.
+      const left = Math.min(bounds.minX, -ROOTS_HALF_WIDTH * trunkScale)
+      const right = Math.max(bounds.maxX, ROOTS_HALF_WIDTH * trunkScale)
       const top = bounds.minY
       const bottom = (TRUNK_DEPTH + trunkExtra(layoutRef.current)) * trunkScale
-      const padding = 50
+      // A phone has no width to spare for a wide margin.
+      const padding = Math.min(50, svg.clientWidth * 0.04)
       // The generation labels hang off the left of the tree: keep screen room for them.
       const labels = layoutRef.current.rings.length ? LABEL_ROOM : 0
       const k = Math.min((svg.clientWidth - padding * 2 - labels) / (right - left), (svg.clientHeight - padding * 2) / (bottom - top), 1.2)

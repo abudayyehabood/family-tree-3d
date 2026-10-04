@@ -6,8 +6,29 @@ import { test } from 'node:test'
 const jiti = createJiti(import.meta.url)
 const R = new URL('../src/', import.meta.url).pathname
 const { computeLayout, cardHalf } = await jiti.import(R + 'lib/treeLayout.ts')
-const { createStressTree } = await jiti.import(R + 'lib/generators.ts')
-const { buildIndex, expandAll, foldToGeneration } = await jiti.import(R + 'lib/tree.ts')
+const { createDemoFamily, createStressTree } = await jiti.import(R + 'lib/generators.ts')
+const { addChild, buildIndex, expandAll, foldToGeneration } = await jiti.import(R + 'lib/tree.ts')
+
+/** Limbs that run under a card other than their own two ends (the card hides them; they seem to grow from it). */
+function limbsUnderCards(layout) {
+  let hits = 0
+  for (const l of layout.links)
+    for (const n of layout.nodes) {
+      if (n.id === l.id || n.id === l.from) continue
+      const { hw, hh } = cardHalf(n.type, !!n.husband)
+      if (l.box.maxX < n.x - hw || l.box.minX > n.x + hw || l.box.maxY < n.y - hh || l.box.minY > n.y + hh) continue
+      if (l.spine.slice(1, -1).some(([x, y]) => Math.abs(x - n.x) < hw && Math.abs(y - n.y) < hh)) hits++
+    }
+  return hits
+}
+
+/** Limbs that run flat or downhill: the child must sit higher than its parent by a third of the way it reaches sideways. */
+function fallingLimbs(layout) {
+  return layout.links.filter((l) => {
+    const [p, c] = [l.spine[0], l.spine[l.spine.length - 1]]
+    return 0.35 * Math.abs(c[0] - p[0]) - (p[1] - c[1]) > 5
+  })
+}
 
 for (const seed of [20260926, 42]) {
   test(`700-person crown (seed ${seed}): no overlapping cards`, () => {
@@ -53,8 +74,30 @@ for (const seed of [20260926, 42]) {
       }
     }
     assert.ok(crossings <= 3, `${crossings} crossing branches`)
+    assert.equal(limbsUnderCards(layout), 0, 'limbs running under other cards')
   })
 }
+
+test('folded and small trees: every limb climbs and none runs under another card', () => {
+  const views = [['demo', createDemoFamily()]]
+  for (const seed of [7, 42]) for (const generation of [3, 4, 6]) views.push([`seed ${seed} folded at ${generation}`, foldToGeneration(expandAll(createStressTree(seed)), generation)])
+  for (const [name, root] of views) {
+    const layout = computeLayout(root, buildIndex(root))
+    assert.equal(limbsUnderCards(layout), 0, `${name}: limbs under cards`)
+    assert.deepEqual(fallingLimbs(layout).map((l) => layout.byId.get(l.id).name), [], `${name}: flat or falling limbs`)
+  }
+})
+
+test('a child added to an early generation grows up from its mother, not sideways or down', () => {
+  const start = foldToGeneration(expandAll(createStressTree(20260926)), 4)
+  const before = computeLayout(start, buildIndex(start))
+  for (const wife of before.nodes.filter((n) => n.type === 'wife' && n.generation <= 3)) {
+    const { root, id } = addChild(start, wife.id, 'male', 'جديد')
+    const layout = computeLayout(root, buildIndex(root))
+    const [kid, mother] = [layout.byId.get(id), layout.byId.get(wife.id)]
+    assert.ok(mother.y - kid.y >= 0.35 * Math.abs(kid.x - mother.x) - 5, `new child of ${wife.name} does not climb`)
+  }
+})
 
 test('every branch leads back to the founder, and each generation gets one label', () => {
   const root = expandAll(createStressTree(7))

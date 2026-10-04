@@ -31,7 +31,7 @@ interface Tool {
   desktopOnly?: boolean
 }
 
-/** Icon plus Arabic label from `lg` up, where there is room for it; a bare icon below that. */
+/** Icon plus Arabic label on wide screens (eight labelled tools need ~1550px); a bare icon below that. */
 function ToolButton({ tool }: { tool: Tool }) {
   const { icon: Icon, label, onClick, accent, desktopOnly } = tool
   return (
@@ -45,7 +45,7 @@ function ToolButton({ tool }: { tool: Tool }) {
       } ${accent ? 'bg-amber-500 text-amber-950 hover:bg-amber-400' : 'border border-amber-100/20 bg-white/10 text-amber-50 hover:bg-white/20'}`}
     >
       <Icon className="size-4" />
-      <span className="hidden lg:inline">{label}</span>
+      <span className="hidden 2xl:inline">{label}</span>
     </button>
   )
 }
@@ -123,7 +123,7 @@ export default function Toolbar({ index, onSearchPick, canUndo, canRedo, onUndo,
           <TreeDeciduous className="size-7 text-lime-300" />
           <h1 className="hidden text-lg font-extrabold whitespace-nowrap md:block">شجرة العائلة</h1>
         </div>
-        <div className="flex min-w-0 flex-1">
+        <div className="flex min-w-48 flex-1">
           <SearchBar index={index} onPick={onSearchPick} />
         </div>
         <div className="mr-auto flex shrink-0 items-center gap-2">
