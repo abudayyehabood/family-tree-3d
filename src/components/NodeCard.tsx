@@ -84,7 +84,7 @@ const dotColour = (type: NodeType, gender: Gender, isRoot: boolean) =>
 
 /** Only shown far out (see `.tiny` in index.css), where a card is a few pixels and a dot reads better. */
 function CardDot({ fill }: { fill: string }) {
-  return <circle className="card-dot" r={60} fill={fill} stroke="#fff" strokeOpacity={0.8} strokeWidth={1} vectorEffect="non-scaling-stroke" />
+  return <circle className="card-dot" r={70} fill={fill} stroke="#fff" strokeOpacity={0.8} strokeWidth={1} vectorEffect="non-scaling-stroke" />
 }
 
 function NodeCard(props: NodeCardProps) {
@@ -108,11 +108,11 @@ function NodeCard(props: NodeCardProps) {
             <circle r={1.6} fill="#fde047" />
           </g>
         </g>
-        <text x={-6} y={years ? 0 : 5.5} textAnchor="middle" fontSize={years ? 14 : 15} fontWeight={800} fill="#3a1d04">
+        <text x={-8} y={years ? 1 : 6.5} textAnchor="middle" fontSize={years ? 17 : 19} fontWeight={800} fill="#3a1d04">
           {truncate(name, 10)}
         </text>
         {years && (
-          <text x={-6} y={12.5} textAnchor="middle" fontSize={9.5} fontWeight={700} fill="#7c2d12">
+          <text x={-8} y={15} textAnchor="middle" fontSize={10.5} fontWeight={700} fill="#7c2d12">
             {years}
           </text>
         )}
@@ -137,15 +137,15 @@ function NodeCard(props: NodeCardProps) {
         <rect x={cx - WW} y={-WH} width={WIFE_W} height={WIFE_H} rx={WH} fill="url(#cardFemale)" stroke="#be185d" strokeWidth={2} />
         {/* Redraw his outline over hers, so the two rings interlock instead of one hiding the other. */}
         <path d={`M${-cx + WW - WH},${-WH} A${WH},${WH} 0 0 1 ${-cx + WW - WH},${WH}`} fill="none" stroke="#0369a1" strokeWidth={2} />
-        <text x={cx + 4} y={years ? 0 : 5} textAnchor="middle" fontSize={years ? 13.5 : 14.5} fontWeight={800} fill="#4a0f2a">
+        <text x={cx + 4} y={years ? 1 : 6} textAnchor="middle" fontSize={years ? 16.5 : 18} fontWeight={800} fill="#4a0f2a">
           {truncate(name, 10)}
         </text>
         {years && (
-          <text x={cx + 4} y={12.5} textAnchor="middle" fontSize={9.5} fontWeight={700} fill="#831843">
+          <text x={cx + 4} y={15} textAnchor="middle" fontSize={10.5} fontWeight={700} fill="#831843">
             {years}
           </text>
         )}
-        <text x={-cx - 4} y={5} textAnchor="middle" fontSize={14} fontWeight={800} fill="#0c4a6e">
+        <text x={-cx - 4} y={6} textAnchor="middle" fontSize={17.5} fontWeight={800} fill="#0c4a6e">
           <title>{`زوجها ${husband}`}</title>
           {truncate(husband, 10)}
         </text>
@@ -166,9 +166,9 @@ function NodeCard(props: NodeCardProps) {
       <path d={`M${-MW + 10},${MH - 8} Q0,${MH - 2} ${MW - 10},${-MH + 8}`} fill="none" stroke="#ffffff" strokeOpacity={0.16} strokeWidth={2} />
       <text
         x={female ? 0 : -10}
-        y={years ? -1 : 6}
+        y={years ? 0 : 7.5}
         textAnchor="middle"
-        fontSize={years ? 15 : 17}
+        fontSize={years ? 19 : 21}
         fontWeight={800}
         fill={textColor}
         stroke={female && !isRoot ? '#ffffff' : '#0b2410'}
@@ -180,7 +180,7 @@ function NodeCard(props: NodeCardProps) {
         {truncate(name, female ? 12 : 10)}
       </text>
       {years && (
-        <text x={female ? 0 : -10} y={14.5} textAnchor="middle" fontSize={10} fontWeight={700} fill={female && !isRoot ? '#831843' : '#ecfccb'}>
+        <text x={female ? 0 : -10} y={17} textAnchor="middle" fontSize={11} fontWeight={700} fill={female && !isRoot ? '#831843' : '#ecfccb'}>
           {years}
         </text>
       )}

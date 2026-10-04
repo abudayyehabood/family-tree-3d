@@ -26,7 +26,7 @@ function Foliage({ nodes, crown }: { nodes: LayoutNode[]; crown: CrownBlob[] }) 
       </g>
       <g fill="#a9d57c" opacity={0.18}>
         {leaves.map((n) => (
-          <circle key={n.id} cx={n.x + 26} cy={n.y - 34} r={n.type === 'wife' ? 36 : 46} />
+          <circle key={n.id} cx={n.x + 30} cy={n.y - 39} r={n.type === 'wife' ? 41 : 53} />
         ))}
       </g>
     </g>

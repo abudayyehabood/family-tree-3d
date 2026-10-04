@@ -5,7 +5,21 @@ small demo family). Tests, typecheck, lint and the layout fuzz run are all green
 
 ## Open
 
-None known.
+- **Laying out the full 700-person tree takes about 1.1s** (was 0.35s before `pullIn`). Fine for an
+  "open all" click; worth moving `computeLayout` into a worker if trees get much bigger.
+- **A limb can still be long where its child sits far to the side** of its parent (a big family's centre
+  is far from its parent's angle). The limb needs that length to climb at a slant instead of running flat.
+
+## Fixed (2026-10-04)
+
+- **Branches were as thick as their generation, not their family.** A childless daughter of the founder
+  got a limb as thick as her brother's that carries hundreds. Width now grows with the square root of
+  the people on the branch (`FAMILY_WIDTH`, capped by the generation width), so small families are twigs.
+- **Some limbs were still long for no reason.** `pullIn` moved a family as one block, so one stuck
+  grandchild held everyone out. Now each card comes in as far as its parent did if it can (else half,
+  else stays), it sweeps up to three times, and checks the family's own cards and limbs against each other.
+  A card still sits clear of the wood it grows from (`KNOT_CLEAR`).
+- **Names were small.** Cards are 15% bigger and names about 25% bigger.
 
 ## Fixed (2026-10-03)
 
