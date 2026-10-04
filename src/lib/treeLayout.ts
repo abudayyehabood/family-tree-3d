@@ -91,6 +91,8 @@ const MAX_THETA = 70 * DEG
  */
 const INNER_FAN = 0.5
 const FAN_GROWTH = 0.25
+/** Narrowest a ring's fan gets while it is narrowed so flank cards climb. */
+const MIN_FAN = 25 * DEG
 const fanOf = (generation: number) => MAX_THETA * Math.min(1, INNER_FAN + FAN_GROWTH * Math.max(0, generation - 1))
 /** Room between a generation label and the card it names. */
 const LABEL_GAP = 16
@@ -154,7 +156,7 @@ const WIFE_LIMB_LENGTH = 1.3
  * Radial room a limb gets per unit of sideways travel, so a limb that must reach far to the side climbs
  * at a slant like a real branch instead of running flat along the ring.
  */
-const TURN_SLOPE = 0.8
+const TURN_SLOPE = 0.35
 /** …but never more than this per ring, or rings whose limbs all turn far would push the crown out without end. */
 const MAX_TURN_ROOM = 3000
 /** A card sits at least this much higher than its parent per unit it sits to the side (no flat or falling limbs). */
@@ -162,21 +164,36 @@ const CLIMB = 0.35
 
 /** Most a ring is pushed out so its limbs climb (more would stretch the whole crown for one card). */
 const MAX_CLIMB_ROOM = 600
+/** Most a whole ring is pushed out, all attempts together, so its limbs climb (one far card must not stretch every limb). */
+const MAX_RING_CLIMB = 1000
+/** Cards on show for each step up in trunk scale (the trunk scales with the square root of the count). */
+const TRUNK_CARDS = 40
 
 /**
- * How much further out (radially) card b must sit for its limb from a to climb at CLIMB. Far round the
- * flank moving out mostly moves sideways and cannot help, so there it asks for nothing.
+ * How much further out (radially) card b must sit for its limb from a to climb at CLIMB (0 if it already
+ * does). Far round the flank moving out mostly moves sideways and cannot help, so a flat limb there gets
+ * Infinity: only moving the card round, not out, lifts it.
  */
 function climbRoom(a: { x: number; y: number }, b: { x: number; y: number; theta: number }): number {
+  const slack = climbSlack(a, b)
+  // Far round the flank no radial room helps: a flat limb there needs infinite room.
+  if (slack === -Infinity) return a.y - b.y >= CLIMB * Math.abs(b.x - a.x) ? 0 : Infinity
+  return Math.max(0, slack)
+}
+
+/**
+ * Like `climbRoom`, but negative when b climbs with room to spare: how far it could come in and still
+ * climb. −Infinity far round the flank, where moving in or out makes no difference to the climb.
+ */
+function climbSlack(a: { x: number; y: number }, b: { x: number; y: number; theta: number }): number {
   const rise = a.y - b.y
   const side = b.x - a.x
-  if (rise >= CLIMB * Math.abs(side)) return 0
   // Moving b out by Δ along its angle raises it by Δ·c and shifts it sideways by Δ·s.
   const c = dome(b.theta) * Math.cos(b.theta)
   const s = dome(b.theta) * Math.sin(b.theta)
   const away = Math.sign(side) === Math.sign(s) ? Math.abs(s) : -Math.abs(s)
   const gain = c - CLIMB * away
-  if (gain < 0.12) return 0
+  if (gain < 0.12) return -Infinity
   return Math.min(MAX_CLIMB_ROOM, (CLIMB * Math.abs(side) - rise) / gain + 1)
 }
 
@@ -368,6 +385,12 @@ export function computeLayout(data: TreeNode, index: TreeIndex): TreeLayout {
   })
   /** Radial room added in front of each ring on top of its step. */
   const extra = levels.map(() => 0)
+  /**
+   * Radial room a ring needs so its limbs can turn and climb, worked out afresh from every attempt's
+   * positions (never added up: an early attempt, before the angles settle, would otherwise leave every
+   * ring pushed out for good).
+   */
+  const bend = levels.map(() => 0)
   const radius: number[] = []
   /** Rows per ring: 2 for crowded generations. */
   const lanes = levels.map(() => 1)
@@ -405,12 +428,18 @@ export function computeLayout(data: TreeNode, index: TreeIndex): TreeLayout {
    */
   let grow = 1
   const placeRings = () =>
-    levels.forEach((_, d) => (radius[d] = d ? radius[d - 1] + laneSpread[d - 1] + grow * (limbStep(d) + extra[d]) : 0))
+    levels.forEach((_, d) => (radius[d] = d ? radius[d - 1] + laneSpread[d - 1] + Math.max(grow * (limbStep(d) + extra[d]), bend[d]) : 0))
   /** Radial distance between two rows at angle θ: stacked vertically near the top, side by side on the steep flanks. */
   const laneStep = (theta: number) =>
     Math.min(LANE_STEP / Math.max(Math.abs(Math.cos(theta)), 1e-3), (MEMBER_W + PAD_X) / Math.max(Math.abs(Math.sin(theta)), 1e-3))
 
-  let trunkScale = 1
+  /**
+   * Trunk (and so every limb) grows with the number of cards on show. Fixed before the rings are laid
+   * out: scaling it with the crown's size fed back on itself (a bigger crown made thicker limbs, which
+   * need longer limbs, which made a bigger crown).
+   */
+  const shown = all.filter((n) => !n.data.unknown).length
+  const trunkScale = Math.min(9, Math.max(1, Math.sqrt(shown / TRUNK_CARDS)))
   /** Angle of every card in the previous attempt (the gap two cards need depends on where they sit). */
   const lastTheta = new Map<string, number>()
   /** Straight-line distance two neighbours need, given their angle on the ring. */
@@ -540,15 +569,13 @@ export function computeLayout(data: TreeNode, index: TreeIndex): TreeLayout {
       if (Math.abs((lastTheta.get(id) ?? 99) - t) > 2 * DEG) moved = true
       lastTheta.set(id, t)
     }
-    const nextTrunk = Math.min(9, Math.max(1, outerRadius / 800))
-    if (Math.abs(nextTrunk - trunkScale) > 0.05) moved = true
-    trunkScale = nextTrunk
 
     for (const d of crowded) extra[d] += RING_BUMP / grow
     // A limb that must turn far needs radial room to do it, or it wraps along the ring like an arch.
     const turnRoom = levels.map(() => 0)
     /** …and a card off to the side of its parent must still sit above it. */
-    const climbNeed = levels.map(() => 0)
+    const climbNeed = levels.map(() => -Infinity)
+    const flat = new Set<number>()
     for (const n of all) {
       const from = n.parent?.data.unknown ? n.parent.parent : n.parent
       if (!from?.parent || n.data.unknown) continue
@@ -558,16 +585,28 @@ export function computeLayout(data: TreeNode, index: TreeIndex): TreeLayout {
       const [ux, uy] = outward(a, outerRadius * FOCUS_DEPTH)
       const sideways = Math.abs(ux * (b.y - a.y) - uy * (b.x - a.x))
       turnRoom[n.depth] = Math.max(turnRoom[n.depth], Math.min(MAX_TURN_ROOM, sideways * TURN_SLOPE))
-      climbNeed[n.depth] = Math.max(climbNeed[n.depth], climbRoom(a, b))
+      const slack = climbSlack(a, b)
+      climbNeed[n.depth] = Math.max(climbNeed[n.depth], slack)
+      // Far round the flank only a narrower fan lifts a card that sits level with its parent.
+      if (slack === -Infinity && a.y - b.y < CLIMB * Math.abs(b.x - a.x)) flat.add(n.depth)
     }
     turnRoom.forEach((need, d) => {
-      const room = grow * (limbStep(d) + extra[d])
-      const more = Math.max(need - room, climbNeed[d])
-      if (more > 1) {
-        extra[d] += more / grow
-        moved = true
-      }
+      if (!d) return
+      const base = grow * (limbStep(d) + extra[d])
+      const room = Math.max(base, bend[d])
+      // Where the ring could sit for every limb to climb: further out, or further in if all climb with room to spare.
+      const climb = climbNeed[d] === -Infinity ? 0 : Math.min(base + MAX_RING_CLIMB, room + climbNeed[d])
+      const want = Math.max(need, climb)
+      // Half way there each attempt (in or out), so the rings settle instead of see-sawing.
+      const next = Math.abs(want - room) < 2 ? want : room + (want - room) / 2
+      if (Math.abs(Math.max(base, next) - room) > 2) moved = true
+      bend[d] = next > base ? next : 0
     })
+    for (const d of flat) {
+      if (fan[d] <= MIN_FAN) continue
+      fan[d] = Math.max(MIN_FAN, fan[d] * 0.92)
+      moved = true
+    }
     spread.forEach((v, d) => {
       if (Math.abs(v - laneSpread[d]) > 1) moved = true
       laneSpread[d] = v
@@ -861,6 +900,13 @@ function pullIn(all: HierarchyNode<TreeNode>[], polar: Map<string, Polar>, minLe
         }
         if (hits) continue
         const pos = (id: string) => at.get(id) ?? polar.get(id)!
+        // Moving a parent in can leave a child that stayed put level with it: every limb must still climb.
+        const falls = family.some((m) => {
+          const parent = parentOf.get(m.data.id)
+          if (m === n || !parent || !(at.has(parent) || at.has(m.data.id))) return false
+          return climbRoom(pos(parent), pos(m.data.id)) > 1 && climbRoom(polar.get(parent)!, polar.get(m.data.id)!) <= 1
+        })
+        if (falls) continue
         // A limb's shape depends on its child, its parent and the grandparent (the way it leaves): only
         // limbs where one of those moved are redrawn and checked.
         const changed = new Set<string>()

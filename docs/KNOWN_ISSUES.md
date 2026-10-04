@@ -8,14 +8,27 @@ small demo family). Tests, typecheck, lint and the layout fuzz run are all green
 - **Laying out the full 700-person tree takes about 1.5s** (0.35s before `pullIn`; the limb-under-card
   and crossing checks cost the rest). Fine for an "open all" click; move `computeLayout` into a worker
   if trees get much bigger.
-- **With everything open, a big family far to the side still hangs off one long limb.** A family sits at
-  the centre of its descendants, so the limb to it must reach that far; it climbs at a slant, but it is long.
+- **With everything open, limbs are still longer than they need be.** Each generation sits on one shared
+  ring, so the ring must clear its most crowded spot and its farthest-reaching limb, and the rest of the
+  ring rides out with it (the bare vertical stem up the middle of the open 700 tree). `pullIn` brings
+  most of them back, but not where that would run a limb under a card. A family also sits over the
+  middle of its own descendants, so a limb to a big family far to the side must reach far. The real fix
+  is to give each family its own radius instead of shared rings.
 - **Adding one person to a fully open big tree moves many cards.** The layout is global (rings, even
   spreading), so a new card in a crowded ring shifts its neighbours. Folded views barely move.
 - **Generation labels are large next to a tiny tree on a phone at 1–5% zoom** and cover the left
   branch; crowded ones hide.
 
 ## Fixed (2026-10-04)
+
+- **Limbs grew longer than needed, most of all in folded views.** Two causes. The trunk scaled with the
+  crown's size, and a thicker trunk made every limb thicker, and so longer, which grew the crown again.
+  The folded 700-person tree stood 1790 tall (now ~1000), and the founder's wife sat 247 away instead
+  of 85. Also, the room a ring got so its limbs could turn and climb was added up attempt after attempt,
+  so a guess made before the angles settled pushed rings out for good. Now the trunk scales with the
+  number of cards shown, and the turn/climb room is worked out afresh each attempt, capped per ring
+  (`MAX_RING_CLIMB`). A flank card that would sit level with its parent narrows its ring's fan instead.
+  The open 700 tree went from 28.4k to 19.6k tall.
 
 - **A child added to an older generation could grow sideways or downhill.** Near the trunk the rings are
   small, so a card far round one sat level with (or below) its parent. Inner generations now fan out less

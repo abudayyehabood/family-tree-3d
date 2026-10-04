@@ -88,6 +88,20 @@ test('folded and small trees: every limb climbs and none runs under another card
   }
 })
 
+test('limbs are no longer than they need to be', () => {
+  // The rings once fed back on themselves (a bigger crown made a thicker trunk and longer limbs), so a
+  // 27-card view stood 1790 tall with the founder's wife 247 away instead of 85.
+  const root = foldToGeneration(expandAll(createStressTree(20260926)), 4)
+  const layout = computeLayout(root, buildIndex(root))
+  assert.ok(layout.bounds.maxY - layout.bounds.minY < 1300, `folded crown ${Math.round(layout.bounds.maxY - layout.bounds.minY)} tall`)
+  const len = (l) => Math.hypot(l.spine.at(-1)[0] - l.spine[0][0], l.spine.at(-1)[1] - l.spine[0][1])
+  const lens = layout.links.map(len).sort((a, b) => a - b)
+  assert.ok(lens[lens.length >> 1] < 220, `median limb ${Math.round(lens[lens.length >> 1])}`)
+  const open = expandAll(createStressTree(20260926))
+  const big = computeLayout(open, buildIndex(open))
+  assert.ok(big.bounds.maxY - big.bounds.minY < 23000, `open crown ${Math.round(big.bounds.maxY - big.bounds.minY)} tall`)
+})
+
 test('a child added to an early generation grows up from its mother, not sideways or down', () => {
   const start = foldToGeneration(expandAll(createStressTree(20260926)), 4)
   const before = computeLayout(start, buildIndex(start))
