@@ -49,7 +49,7 @@ export function taperedCubicPath(p0: Point, p1: Point, p2: Point, p3: Point, w0:
 
 /**
  * Filled, tapered shape following an arbitrary centre-line, width w0 at the first point tapering to
- * w1 at the last. Same flare as `taperedCubicPath`; used where the centre-line is a polar sweep and
+ * w1 at the last. Same flare as `taperedCubicPath`; used where the centre-line is a curved limb and
  * therefore cannot be expressed as a single cubic.
  */
 export function taperedPolylinePath(centre: Point[], w0: number, w1: number): string {

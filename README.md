@@ -4,7 +4,7 @@ An Arabic, right-to-left family tree drawn as a living tree: trunk, roots, green
 
 ## Features
 
-- Upward polar canopy layout (`src/lib/treeLayout.ts`): wives 85px from the husband, children 140px from the mother, no overlapping cards.
+- Upward canopy layout (`src/lib/treeLayout.ts`): one row per generation, each only as high above the last as its limbs need; wives 85px above the husband, children 140px above the mother, no overlapping cards.
 - Click any person to open the side panel: rename («حفظ الاسم» or Enter), add wife (up to 4), add son/daughter, collapse/expand, delete.
 - Double-click any card to rename it directly on the tree.
 - Zoom dock (+ / − / percentage / «توسيط الشجرة»), search with auto-expand, JSON import/export, auto-save to `localStorage`.

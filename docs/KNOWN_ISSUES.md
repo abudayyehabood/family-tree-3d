@@ -5,19 +5,29 @@ small demo family). Tests, typecheck, lint and the layout fuzz run are all green
 
 ## Open
 
-- **Laying out the full 700-person tree takes about 1.5s** (0.35s before `pullIn`; the limb-under-card
-  and crossing checks cost the rest). Fine for an "open all" click; move `computeLayout` into a worker
-  if trees get much bigger.
-- **With everything open, limbs are still longer than they need be.** Each generation sits on one shared
-  ring, so the ring must clear its most crowded spot and its farthest-reaching limb, and the rest of the
-  ring rides out with it (the bare vertical stem up the middle of the open 700 tree). `pullIn` brings
-  most of them back, but not where that would run a limb under a card. A family also sits over the
-  middle of its own descendants, so a limb to a big family far to the side must reach far. The real fix
-  is to give each family its own radius instead of shared rings.
-- **Adding one person to a fully open big tree moves many cards.** The layout is global (rings, even
-  spreading), so a new card in a crowded ring shifts its neighbours. Folded views barely move.
+- **A big family far to the side hangs off one long limb when everything is open.** A wife sits over the
+  middle of her own descendants, so in the open 700-person tree a husband→wife limb can reach 10,000
+  sideways. It climbs between the rows and stays clear of cards, but it is long.
+- **On a phone held upright the tree is small.** Rows make the crown wide and low, which suits desktop
+  screens: a 17-person family fits at ~25% on a 390px-wide phone (39% with the old rings). Turn the phone
+  sideways, or zoom in.
+- **Adding one person to a fully open big tree moves many cards.** A new card widens its row, so the
+  families beside it shift over. Folded views barely move.
 - **Generation labels are large next to a tiny tree on a phone at 1–5% zoom** and cover the left
   branch; crowded ones hide.
+
+## Fixed (2026-10-05)
+
+- **Limbs were far longer than needed; the tree was tall and narrow, with empty space either side.**
+  Every generation sat on a ring round the founder. A ring near the trunk is short, so a family that did
+  not fit side by side on it pushed the whole ring up; so did one limb that had to reach far sideways
+  (to climb), and every other limb of that generation grew with it. `pullIn` brought some back, but the
+  cards jammed each other. Each generation is now a straight row, as wide as its people need, and only
+  as far above the last as its limbs need (`CLIMB`, capped at `MAX_CLIMB_STEPS`). A 1509-person tree
+  folded to 39 cards went from 1372 to 957 tall (fits at 66% instead of 49%), the folded 700-person
+  tree from 998 to 755, and the open one from 19.6k to 7.7k tall. Layout of 700 open: 1.4s to 0.25s.
+  A limb reaching far sideways leaves straight up and crosses between the rows, not under its
+  neighbours' cards.
 
 ## Fixed (2026-10-04)
 

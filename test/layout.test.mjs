@@ -22,11 +22,11 @@ function limbsUnderCards(layout) {
   return hits
 }
 
-/** Limbs that run flat or downhill: the child must sit higher than its parent by a third of the way it reaches sideways. */
+/** Limbs that run flat or downhill: the child must sit higher than its parent by a fifth of the way it reaches sideways. */
 function fallingLimbs(layout) {
   return layout.links.filter((l) => {
     const [p, c] = [l.spine[0], l.spine[l.spine.length - 1]]
-    return 0.35 * Math.abs(c[0] - p[0]) - (p[1] - c[1]) > 5
+    return 0.2 * Math.abs(c[0] - p[0]) - (p[1] - c[1]) > 5
   })
 }
 
@@ -88,18 +88,20 @@ test('folded and small trees: every limb climbs and none runs under another card
   }
 })
 
-test('limbs are no longer than they need to be', () => {
-  // The rings once fed back on themselves (a bigger crown made a thicker trunk and longer limbs), so a
-  // 27-card view stood 1790 tall with the founder's wife 247 away instead of 85.
+test('rows are no further apart than their limbs need', () => {
+  // Generations once sat on rings round the founder: a ring near the trunk was too short for its family,
+  // so the whole ring (and every limb of that generation) was pushed up. A 27-card view stood 1790 tall.
   const root = foldToGeneration(expandAll(createStressTree(20260926)), 4)
   const layout = computeLayout(root, buildIndex(root))
-  assert.ok(layout.bounds.maxY - layout.bounds.minY < 1300, `folded crown ${Math.round(layout.bounds.maxY - layout.bounds.minY)} tall`)
-  const len = (l) => Math.hypot(l.spine.at(-1)[0] - l.spine[0][0], l.spine.at(-1)[1] - l.spine[0][1])
-  const lens = layout.links.map(len).sort((a, b) => a - b)
-  assert.ok(lens[lens.length >> 1] < 220, `median limb ${Math.round(lens[lens.length >> 1])}`)
+  assert.ok(layout.bounds.maxY - layout.bounds.minY < 900, `folded crown ${Math.round(layout.bounds.maxY - layout.bounds.minY)} tall`)
+  // Every generation lines up in one row.
+  for (const generation of [2, 3, 4]) {
+    const ys = new Set(layout.nodes.filter((n) => n.type === 'member' && n.generation === generation).map((n) => Math.round(n.y)))
+    assert.equal(ys.size, 1, `generation ${generation} sits on ${ys.size} rows`)
+  }
   const open = expandAll(createStressTree(20260926))
   const big = computeLayout(open, buildIndex(open))
-  assert.ok(big.bounds.maxY - big.bounds.minY < 23000, `open crown ${Math.round(big.bounds.maxY - big.bounds.minY)} tall`)
+  assert.ok(big.bounds.maxY - big.bounds.minY < 10000, `open crown ${Math.round(big.bounds.maxY - big.bounds.minY)} tall`)
 })
 
 test('a child added to an early generation grows up from its mother, not sideways or down', () => {
@@ -109,7 +111,7 @@ test('a child added to an early generation grows up from its mother, not sideway
     const { root, id } = addChild(start, wife.id, 'male', 'جديد')
     const layout = computeLayout(root, buildIndex(root))
     const [kid, mother] = [layout.byId.get(id), layout.byId.get(wife.id)]
-    assert.ok(mother.y - kid.y >= 0.35 * Math.abs(kid.x - mother.x) - 5, `new child of ${wife.name} does not climb`)
+    assert.ok(mother.y - kid.y >= 0.2 * Math.abs(kid.x - mother.x) - 5, `new child of ${wife.name} does not climb`)
   }
 })
 
