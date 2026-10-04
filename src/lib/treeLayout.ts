@@ -88,6 +88,15 @@ const LABEL_GAP = 16
 const CLIMB = 0.25
 /** …but a row never climbs more than this many steps for one far-reaching limb. */
 const MAX_CLIMB_STEPS = 3
+/**
+ * A row of children with this many cards packs them in two staggered tiers, every other card a little higher, so
+ * neighbours may overlap sideways. A row of many small families is then about half as wide, and the
+ * limbs that reach across to it about half as long. (One flat row of 17 cards made a 39-card view three
+ * times wider than tall, with limbs sweeping across the whole crown.)
+ */
+const TIER_CARDS = 6
+/** The upper tier sits this far above the lower one. */
+const TIER_RISE = MEMBER_H + 14
 /** How far the crown moves sideways so it sits balanced over the trunk (0 = founder over his wives, 1 = over everyone). */
 const BALANCE = 0.6
 
@@ -234,9 +243,15 @@ export function computeLayout(data: TreeNode, index: TreeIndex): TreeLayout {
 
   // Across: a tidy tree in world units, so neighbours are exactly as far apart as their cards (and the
   // limbs of two families between them) need.
+  // Wife rows stay flat: their step is short, so a limb reaching far sideways has no room to swing
+  // under the lower tier, and a wife's children spread her row out anyway.
+  const tiered = levels.map((level, d) => step[d] === CHILD_STEP && level.filter((n) => !n.data.unknown).length >= TIER_CARDS)
   tree<TreeNode>()
     .nodeSize([1, 1])
     .separation((a, b) => {
+      // Staggered: a card only has to clear its neighbours on the other tier by a limb's width, so the
+      // limb to the card between two others still passes between them.
+      if (tiered[a.depth]) return Math.max(cardW(a.data), cardW(b.data)) / 2 + Math.max(baseWidth(a), baseWidth(b)) / 2 + 2 * PAD_X + 2
       const cards = (cardW(a.data) + cardW(b.data)) / 2 + PAD_X + (a.parent === b.parent ? 0 : COUSIN_PAD)
       // Branches of different families must not merge (siblings may: they fork from one limb anyway).
       const limbs = a.parent === b.parent ? 0 : (baseWidth(a) + baseWidth(b)) / 2 + PAD_X
@@ -252,23 +267,42 @@ export function computeLayout(data: TreeNode, index: TreeIndex): TreeLayout {
   // An unknown mother sits exactly on her husband.
   for (const n of all) if (n.data.unknown) x.set(n.data.id, x.get(n.parent!.data.id)!)
 
+  // Which cards of a staggered row go up a tier: left to right, a card goes up only where it would
+  // overlap the last card on the lower tier.
+  const lift = new Set<string>()
+  levels.forEach((level, d) => {
+    if (!tiered[d]) return
+    let edge = -Infinity
+    for (const n of level.filter((m) => !m.data.unknown).sort((a, b) => x.get(a.data.id)! - x.get(b.data.id)!)) {
+      const [cx, half] = [x.get(n.data.id)!, cardW(n.data) / 2]
+      if (cx - half < edge + PAD_X) lift.add(n.data.id)
+      else edge = cx + half
+    }
+  })
+
   // Up: each row as far above the last as its limbs need.
   const rowY: number[] = [0]
+  /** Top of each row's cards: its upper tier when it has one. */
+  const rowTop: number[] = [0]
+  const tierOf = (n: HierarchyNode<TreeNode>) => (lift.has(n.data.id) ? TIER_RISE : 0)
   for (let d = 1; d < levels.length; d++) {
     const cards = levels[d].filter((n) => !n.data.unknown)
-    let need = 0
+    // Never closer to the last row's top tier than a card's height and a little room for limbs.
+    let need = cards.length && levels[d - 1].some((n) => !n.data.unknown) ? MEMBER_H + 20 : 0
     for (const n of cards) {
       const from = limbFrom(n)
-      // Rows between the parent's and this one already lift the limb (an unknown mother's row is empty).
-      const below = rowY[from.depth] - rowY[d - 1]
+      // Rows between the parent and this one already lift the limb (an unknown mother's row is empty).
+      // A limb from a staggered row only starts to turn once it is past its row's upper tier.
+      const below = rowTop[from.depth] - rowTop[d - 1]
       const own = limbNeed(n) - below
       const climb = Math.min(MAX_CLIMB_STEPS * step[d], CLIMB * Math.abs(x.get(n.data.id)! - x.get(from.data.id)!) - below)
       need = Math.max(need, own, climb)
     }
-    rowY[d] = rowY[d - 1] - (cards.length ? need : 0)
+    rowY[d] = rowTop[d - 1] - (cards.length ? need : 0)
+    rowTop[d] = rowY[d] - (cards.some((n) => lift.has(n.data.id)) ? TIER_RISE : 0)
   }
-  const yOf = (n: HierarchyNode<TreeNode>) => (n.data.unknown ? rowY[limbFrom(n).depth] : rowY[n.depth])
-  const top = -rowY[rowY.length - 1]
+  const yOf = (n: HierarchyNode<TreeNode>): number => (n.data.unknown ? yOf(limbFrom(n)) : rowY[n.depth] - tierOf(n))
+  const top = -rowTop[rowTop.length - 1]
   /** Limbs head up from a point this far below the founder, so the outer ones lean out like a crown. */
   const focus = Math.max(top, 400) * 0.5
   const outward = (p: { x: number; y: number }): Point => unit(p.x, p.y - focus)
@@ -321,28 +355,36 @@ export function computeLayout(data: TreeNode, index: TreeIndex): TreeLayout {
      * the child from below, so it never runs along a row. The rows give far-reaching limbs extra height
      * (CLIMB), so they climb at a slant instead of running flat.
      */
-    const len = Math.hypot(p.x - pp.x, p.y - pp.y) || 1
-    const [dx, dy] = [(p.x - pp.x) / len, (p.y - pp.y) / len]
+    // On a staggered row a limb runs straight up through the gap between the cards beside its card,
+    // and only bends while it is clear of the row: up past the upper tier when it leaves a lower-tier
+    // card, up from below the lower tier when it reaches an upper-tier one.
+    const sunk = tiered[from.depth] && !lift.has(from.data.id)
+    const lifted = lift.has(d.id)
+    const s0 = sunk ? { x: pp.x, y: pp.y - TIER_RISE - MEMBER_H / 2 } : pp
+    const s1 = lifted ? { x: p.x, y: p.y + TIER_RISE + MEMBER_H / 2 } : p
+    const len = Math.hypot(s1.x - s0.x, s1.y - s0.y) || 1
+    const [dx, dy] = [(s1.x - s0.x) / len, (s1.y - s0.y) / len]
     // The founder's limbs leave the trunk top straight up.
-    const [ox, oy] = arrival.get(from.data.id) ?? (from.parent ? outward(pp) : [0, -1])
-    const [ex, ey] = outward(p)
+    const [ox, oy] = sunk ? [0, -1] : (arrival.get(from.data.id) ?? (from.parent ? outward(pp) : [0, -1]))
+    const [ex, ey] = lifted ? [0, -1] : outward(p)
     // The further a limb reaches sideways for its rise, the straighter up it leaves and arrives, so it
     // crosses between the rows rather than along them under its neighbours' cards.
-    const flat = Math.max(1, Math.abs(p.x - pp.x) / Math.max(pp.y - p.y, 1) / 10)
+    const flat = Math.max(1, Math.abs(s1.x - s0.x) / Math.max(s0.y - s1.y, 1) / 10)
     const [ax, ay] = unit(dx + ox * LEAVE_UP * flat, dy + oy * LEAVE_UP * flat)
-    const [bx, by] = unit(ex + (dx * ARRIVE_LEAN) / flat, ey + (dy * ARRIVE_LEAN) / flat)
+    const [bx, by] = lifted ? [0, -1] : unit(ex + (dx * ARRIVE_LEAN) / flat, ey + (dy * ARRIVE_LEAN) / flat)
     arrival.set(d.id, [bx, by])
     // A long limb to the side bends only as far as it rises, or it would bulge over the next row.
-    const bend = Math.min(len * LIMB_BEND, (pp.y - p.y) * RISE_BEND)
-    const c1: Point = [pp.x + ax * bend, pp.y + ay * bend]
-    const c2: Point = [p.x - bx * bend, p.y - by * bend]
-    const centre: Point[] = []
+    const bend = Math.max(0, Math.min(len * LIMB_BEND, (s0.y - s1.y) * RISE_BEND))
+    const c1: Point = [s0.x + ax * bend, s0.y + ay * bend]
+    const c2: Point = [s1.x - bx * bend, s1.y - by * bend]
+    const centre: Point[] = sunk ? [[pp.x, pp.y], [pp.x, (pp.y + s0.y) / 2]] : []
     for (let i = 0; i <= BRANCH_SAMPLES; i++) {
       const t = i / BRANCH_SAMPLES
       const mt = 1 - t
       const [a, b, c, e] = [mt * mt * mt, 3 * mt * mt * t, 3 * mt * t * t, t * t * t]
-      centre.push([a * pp.x + b * c1[0] + c * c2[0] + e * p.x, a * pp.y + b * c1[1] + c * c2[1] + e * p.y])
+      centre.push([a * s0.x + b * c1[0] + c * c2[0] + e * s1.x, a * s0.y + b * c1[1] + c * c2[1] + e * s1.y])
     }
+    if (lifted) centre.push([p.x, (p.y + s1.y) / 2], [p.x, p.y])
 
     // A branch starts a little wider than the family it carries (never wider than its parent) and ends at that width.
     const w0 = baseWidth(n)

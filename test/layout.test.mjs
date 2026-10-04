@@ -57,7 +57,8 @@ for (const seed of [20260926, 42]) {
       }
     }
 
-    // Branches may touch where they fork, but hardly any may cross further along (a tangle).
+    // Branches may touch where they fork, but hardly any of two families may cross further along (a
+    // tangle). Two limbs from one parent may braid, where one reaches a staggered row's upper tier.
     const cross = (p, q, r, s) => {
       const d = (a, b, c) => (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
       return d(p, q, r) * d(p, q, s) < 0 && d(r, s, p) * d(r, s, q) < 0
@@ -67,7 +68,7 @@ for (const seed of [20260926, 42]) {
     for (let i = 0; i < layout.links.length; i++) {
       for (let j = i + 1; j < layout.links.length; j++) {
         const [a, b] = [layout.links[i].spine, layout.links[j].spine]
-        if (apart(layout.links[i].box, layout.links[j].box)) continue
+        if (layout.links[i].from === layout.links[j].from || apart(layout.links[i].box, layout.links[j].box)) continue
         let hit = false
         for (let u = 1; u < a.length - 2 && !hit; u++) for (let v = 1; v < b.length - 2 && !hit; v++) hit = cross(a[u], a[u + 1], b[v], b[v + 1])
         if (hit) crossings++
@@ -94,11 +95,13 @@ test('rows are no further apart than their limbs need', () => {
   const root = foldToGeneration(expandAll(createStressTree(20260926)), 4)
   const layout = computeLayout(root, buildIndex(root))
   assert.ok(layout.bounds.maxY - layout.bounds.minY < 900, `folded crown ${Math.round(layout.bounds.maxY - layout.bounds.minY)} tall`)
-  // Every generation lines up in one row.
+  // Every generation lines up in one row (a crowded one in two staggered tiers).
   for (const generation of [2, 3, 4]) {
     const ys = new Set(layout.nodes.filter((n) => n.type === 'member' && n.generation === generation).map((n) => Math.round(n.y)))
-    assert.equal(ys.size, 1, `generation ${generation} sits on ${ys.size} rows`)
+    assert.ok(ys.size <= 2, `generation ${generation} sits on ${ys.size} rows`)
   }
+  // …and the crown is not much wider than tall (one flat row of 17 cards made it three times wider).
+  assert.ok(layout.bounds.maxX - layout.bounds.minX < 1.6 * (layout.bounds.maxY - layout.bounds.minY), 'folded crown far wider than tall')
   const open = expandAll(createStressTree(20260926))
   const big = computeLayout(open, buildIndex(open))
   assert.ok(big.bounds.maxY - big.bounds.minY < 10000, `open crown ${Math.round(big.bounds.maxY - big.bounds.minY)} tall`)

@@ -8,15 +8,24 @@ small demo family). Tests, typecheck, lint and the layout fuzz run are all green
 - **A big family far to the side hangs off one long limb when everything is open.** A wife sits over the
   middle of her own descendants, so in the open 700-person tree a husband→wife limb can reach 10,000
   sideways. It climbs between the rows and stays clear of cards, but it is long.
-- **On a phone held upright the tree is small.** Rows make the crown wide and low, which suits desktop
-  screens: a 17-person family fits at ~25% on a 390px-wide phone (39% with the old rings). Turn the phone
-  sideways, or zoom in.
+- **On a phone held upright the tree is small.** Rows make the crown wider than tall, which suits desktop
+  screens. Turn the phone sideways, or zoom in.
+- **Two limbs from one parent can braid** where one reaches a staggered row's upper tier and the other
+  its lower one (about 6 pairs with 700 open; none between different families).
 - **Adding one person to a fully open big tree moves many cards.** A new card widens its row, so the
   families beside it shift over. Folded views barely move.
 - **Generation labels are large next to a tiny tree on a phone at 1–5% zoom** and cover the left
   branch; crowded ones hide.
 
 ## Fixed (2026-10-05)
+
+- **Limbs swept across the whole crown; the tree was three times wider than tall.** A row of many small
+  families (17 cards in a 39-card view) laid flat side by side was as wide as all its cards, so every
+  wife and son below it sat far out and their limbs ran almost flat across the screen. A crowded row of
+  children (`TIER_CARDS`) now packs every other card a little higher (`TIER_RISE`), so neighbours overlap
+  sideways and the row is about half as wide. Limbs pass straight up through the gap between the cards
+  beside theirs and bend only clear of the row. That view went from 2482 wide to 1572 (957 to 899 tall),
+  average limb 301 to 239; the open 700-person tree from 23.7k wide to 14.3k.
 
 - **Limbs were far longer than needed; the tree was tall and narrow, with empty space either side.**
   Every generation sat on a ring round the founder. A ring near the trunk is short, so a family that did
