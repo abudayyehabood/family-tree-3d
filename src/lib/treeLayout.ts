@@ -85,9 +85,14 @@ const LABEL_GAP = 16
  * above the one before as its limbs need: a step, a few limb widths for thick ones, and enough rise that
  * a limb reaching far sideways still climbs.
  */
-const CLIMB = 0.25
-/** …but a row never climbs more than this many steps for one far-reaching limb. */
+const CLIMB = 0.4
+/**
+ * …but a crowded row never climbs more than this many steps for one far-reaching limb, since every
+ * other limb into the row grows with it. A row of few cards (low in the tree, where the limbs reach
+ * furthest) may climb up to CLIMB_CARDS / cards steps, so its limbs rise instead of running flat.
+ */
 const MAX_CLIMB_STEPS = 3
+const CLIMB_CARDS = 24
 /**
  * A row of children with this many cards packs them in two staggered tiers, every other card a little higher, so
  * neighbours may overlap sideways. A row of many small families is then about half as wide, and the
@@ -96,9 +101,11 @@ const MAX_CLIMB_STEPS = 3
  */
 const TIER_CARDS = 6
 /** The upper tier sits this far above the lower one. */
-const TIER_RISE = MEMBER_H + 14
-/** How far the crown moves sideways so it sits balanced over the trunk (0 = founder over his wives, 1 = over everyone). */
-const BALANCE = 0.6
+const TIER_RISE = MEMBER_H + 26
+/** Rounds of sliding each card to the middle of its parent and its family. */
+const SPREAD_PASSES = 40
+/** …except cards carrying more than this share of the cards on show: they stand under their people. */
+const CROWN_SHARE = 0.25
 
 /** Branch width: the trunk top for the founder, then 25% thinner every generation. */
 const TRUNK_TOP = 48
@@ -188,8 +195,8 @@ export interface TreeLayout {
   bounds: Box
   /** Big leafy silhouette drawn behind the whole canopy. */
   crown: CrownBlob[]
-  /** Anchor (right edge, vertical middle) of each generation's label, beside its leftmost card. */
-  rings: Array<{ generation: number; x: number; y: number }>
+  /** Each generation's label, level with its row: `x` is the right edge of the one left of the crown, `xr` the left edge of the one right of it. */
+  rings: Array<{ generation: number; x: number; xr: number; y: number }>
   /** Trunk scale (1 for normal families, grows for big crowns so the trunk stays proportional). */
   trunkScale: number
 }
@@ -246,25 +253,62 @@ export function computeLayout(data: TreeNode, index: TreeIndex): TreeLayout {
   // Wife rows stay flat: their step is short, so a limb reaching far sideways has no room to swing
   // under the lower tier, and a wife's children spread her row out anyway.
   const tiered = levels.map((level, d) => step[d] === CHILD_STEP && level.filter((n) => !n.data.unknown).length >= TIER_CARDS)
-  tree<TreeNode>()
-    .nodeSize([1, 1])
-    .separation((a, b) => {
-      // Staggered: a card only has to clear its neighbours on the other tier by a limb's width, so the
-      // limb to the card between two others still passes between them.
-      if (tiered[a.depth]) return Math.max(cardW(a.data), cardW(b.data)) / 2 + Math.max(baseWidth(a), baseWidth(b)) / 2 + 2 * PAD_X + 2
-      const cards = (cardW(a.data) + cardW(b.data)) / 2 + PAD_X + (a.parent === b.parent ? 0 : COUSIN_PAD)
-      // Branches of different families must not merge (siblings may: they fork from one limb anyway).
-      const limbs = a.parent === b.parent ? 0 : (baseWidth(a) + baseWidth(b)) / 2 + PAD_X
-      return Math.max(cards, limbs) + 2
-    })(root)
-  // Mirrored: the first-born (smallest d3 x) sits on the right, matching Arabic reading order. The crown
-  // moves part of the way towards where its people are, so one big family does not hang off to one side.
-  let mass = 0
-  for (const n of all) mass += n.x!
-  mass = all.length > 1 ? (mass - root.x!) / (all.length - 1) - root.x! : 0
-  const xOf = (n: HierarchyNode<TreeNode>) => (n.parent ? -(n.x! - root.x! - BALANCE * mass) : 0)
-  const x = new Map(all.map((n) => [n.data.id, n.data.unknown ? 0 : xOf(n)]))
-  // An unknown mother sits exactly on her husband.
+  const separation = (a: HierarchyNode<TreeNode>, b: HierarchyNode<TreeNode>) => {
+    // Staggered: a card only has to clear its neighbours on the other tier by a limb's width, so the
+    // limb to the card between two others still passes between them.
+    if (tiered[a.depth]) return Math.max(cardW(a.data), cardW(b.data)) / 2 + Math.max(baseWidth(a), baseWidth(b)) / 2 + 3 * PAD_X + 2
+    const cards = (cardW(a.data) + cardW(b.data)) / 2 + PAD_X + (a.parent === b.parent ? 0 : COUSIN_PAD)
+    // Branches of different families must not merge (siblings may: they fork from one limb anyway).
+    const limbs = a.parent === b.parent ? 0 : (baseWidth(a) + baseWidth(b)) / 2 + PAD_X
+    return Math.max(cards, limbs) + 2
+  }
+  tree<TreeNode>().nodeSize([1, 1]).separation(separation)(root)
+  // Mirrored: the first-born (smallest d3 x) sits on the right, matching Arabic reading order.
+  const x = new Map(all.map((n) => [n.data.id, n.data.unknown ? 0 : -n.x!]))
+  const people = all.filter((n) => n.parent && !n.data.unknown)
+  /** The cards on show above each card that carries much of the crown. */
+  const crowns = new Map<HierarchyNode<TreeNode>, Array<HierarchyNode<TreeNode>>>()
+  for (const n of people) {
+    const up = n.descendants().filter((k) => k !== n && !k.data.unknown)
+    if (up.length > CROWN_SHARE * people.length) crowns.set(n, up)
+  }
+
+  /*
+   * The tidy tree puts every parent over the middle of its family, so a line that runs far out to one
+   * side does all its travelling in one long, flat limb low down and then rises as a straight column.
+   * Each card slides to the middle of its parent and its family (never past its neighbours in the row),
+   * so the sideways reach spreads over every limb of the line and each one climbs; a card with no
+   * family moves towards its parent.
+   */
+  const fed = new Map<HierarchyNode<TreeNode>, Array<HierarchyNode<TreeNode>>>()
+  for (const n of all) if (n.parent && !n.data.unknown) fed.set(limbFrom(n), [...(fed.get(limbFrom(n)) ?? []), n])
+  const rows = levels.map((level) => level.filter((n) => !n.data.unknown).sort((a, b) => x.get(a.data.id)! - x.get(b.data.id)!))
+  for (let pass = 0; pass < SPREAD_PASSES; pass++)
+    for (const row of rows)
+      row.forEach((n, i) => {
+        const kids = fed.get(n) ?? []
+        if (!n.parent && !kids.length) return
+        let target: number
+        if (!n.parent || crowns.has(n)) {
+          // The heart of the tree (the founder, so the trunk, and the cards carrying much of the crown)
+          // stands under the middle of its people, so the crown sits balanced over the trunk. Free to
+          // slide like the rest it drifts off to one side, and the trunk ends up under nothing.
+          const up = crowns.get(n) ?? people
+          target = up.reduce((sum, k) => sum + x.get(k.data.id)!, 0) / up.length
+        } else {
+          // The middle of its parent and its children: the limbs to them are then no longer in all (a
+          // card over a big family stays over it), and a card in a lone line moves halfway along it.
+          const ends = [limbFrom(n), ...kids].map((k) => x.get(k.data.id)!).sort((a, b) => a - b)
+          target = (ends[(ends.length - 1) >> 1] + ends[ends.length >> 1]) / 2
+        }
+        const [prev, next] = [row[i - 1], row[i + 1]]
+        if (prev) target = Math.max(target, x.get(prev.data.id)! + separation(prev, n))
+        if (next) target = Math.min(target, x.get(next.data.id)! - separation(n, next))
+        x.set(n.data.id, target)
+      })
+  // The founder stands at 0, and an unknown mother exactly on her husband.
+  const founderX = x.get(root.data.id)!
+  for (const n of all) x.set(n.data.id, n.data.unknown ? 0 : x.get(n.data.id)! - founderX)
   for (const n of all) if (n.data.unknown) x.set(n.data.id, x.get(n.parent!.data.id)!)
 
   // Which cards of a staggered row go up a tier: left to right, a card goes up only where it would
@@ -295,7 +339,7 @@ export function computeLayout(data: TreeNode, index: TreeIndex): TreeLayout {
       // A limb from a staggered row only starts to turn once it is past its row's upper tier.
       const below = rowTop[from.depth] - rowTop[d - 1]
       const own = limbNeed(n) - below
-      const climb = Math.min(MAX_CLIMB_STEPS * step[d], CLIMB * Math.abs(x.get(n.data.id)! - x.get(from.data.id)!) - below)
+      const climb = Math.min(Math.max(MAX_CLIMB_STEPS, CLIMB_CARDS / cards.length) * step[d], CLIMB * Math.abs(x.get(n.data.id)! - x.get(from.data.id)!) - below)
       need = Math.max(need, own, climb)
     }
     rowY[d] = rowTop[d - 1] - (cards.length ? need : 0)
@@ -411,29 +455,31 @@ export function computeLayout(data: TreeNode, index: TreeIndex): TreeLayout {
     })
   }
 
-  // One label per generation of blood members, just left of that generation's leftmost card.
+  // One label per generation of blood members, level with its row, on both sides of the whole crown so
+  // they line up in two columns and every part of the row is near one.
   const rings: TreeLayout['rings'] = []
-  for (const level of levels) {
-    let left: LayoutNode | undefined
-    for (const n of level) {
-      const node = byId.get(n.data.id)
-      if (node && node.type === 'member' && !node.isRoot && (!left || node.x < left.x)) left = node
-    }
-    if (left) rings.push({ generation: left.generation, x: left.x - cardHalf(left.type, !!left.husband).hw - LABEL_GAP, y: left.y })
-  }
+  levels.forEach((level, depth) => {
+    const member = level.map((n) => byId.get(n.data.id)).find((node) => node && node.type === 'member' && !node.isRoot)
+    if (member) rings.push({ generation: member.generation, x: bounds.minX - LABEL_GAP, xr: bounds.maxX + LABEL_GAP, y: (rowY[depth] + rowTop[depth]) / 2 })
+  })
 
-  return { nodes, links, byId, bounds, crown: crownBlobs(nodes, Math.max(top, bounds.maxX - bounds.minX)), rings, trunkScale }
+  return { nodes, links, byId, bounds, crown: crownBlobs(nodes, links, Math.max(top, bounds.maxX - bounds.minX)), rings, trunkScale }
 }
 
 /**
- * Leafy crown that follows the real branches: cards are binned on a coarse grid and every occupied
- * cell gets one big soft blob, so the canopy leans and gaps where the tree does.
+ * Leafy crown that follows the real branches: cards and the middles of limbs are binned on a coarse grid
+ * and every occupied cell gets one big soft blob, so the canopy leans and gaps where the tree does. (With
+ * cards alone, a long limb crossing an empty stretch left a bare hole in the leaves.)
  */
-function crownBlobs(nodes: LayoutNode[], outer: number): CrownBlob[] {
+function crownBlobs(nodes: LayoutNode[], links: LayoutLink[], outer: number): CrownBlob[] {
   const cell = Math.max(320, outer / 7)
   const bins = new Map<string, { x: number; y: number; n: number }>()
-  for (const { x, y, isRoot } of nodes) {
-    if (isRoot) continue
+  const points = nodes.filter((n) => !n.isRoot).map(({ x, y }) => ({ x, y }))
+  for (const { spine } of links) {
+    const [x, y] = spine[spine.length >> 1]
+    points.push({ x, y })
+  }
+  for (const { x, y } of points) {
     const key = `${Math.floor(x / cell)},${Math.floor(y / cell)}`
     const bin = bins.get(key) ?? { x: 0, y: 0, n: 0 }
     bin.x += x

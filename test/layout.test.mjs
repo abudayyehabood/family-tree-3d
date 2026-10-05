@@ -94,7 +94,7 @@ test('rows are no further apart than their limbs need', () => {
   // so the whole ring (and every limb of that generation) was pushed up. A 27-card view stood 1790 tall.
   const root = foldToGeneration(expandAll(createStressTree(20260926)), 4)
   const layout = computeLayout(root, buildIndex(root))
-  assert.ok(layout.bounds.maxY - layout.bounds.minY < 900, `folded crown ${Math.round(layout.bounds.maxY - layout.bounds.minY)} tall`)
+  assert.ok(layout.bounds.maxY - layout.bounds.minY < 1000, `folded crown ${Math.round(layout.bounds.maxY - layout.bounds.minY)} tall`)
   // Every generation lines up in one row (a crowded one in two staggered tiers).
   for (const generation of [2, 3, 4]) {
     const ys = new Set(layout.nodes.filter((n) => n.type === 'member' && n.generation === generation).map((n) => Math.round(n.y)))
@@ -104,7 +104,7 @@ test('rows are no further apart than their limbs need', () => {
   assert.ok(layout.bounds.maxX - layout.bounds.minX < 1.6 * (layout.bounds.maxY - layout.bounds.minY), 'folded crown far wider than tall')
   const open = expandAll(createStressTree(20260926))
   const big = computeLayout(open, buildIndex(open))
-  assert.ok(big.bounds.maxY - big.bounds.minY < 10000, `open crown ${Math.round(big.bounds.maxY - big.bounds.minY)} tall`)
+  assert.ok(big.bounds.maxY - big.bounds.minY < 12000, `open crown ${Math.round(big.bounds.maxY - big.bounds.minY)} tall`)
 })
 
 test('a child added to an early generation grows up from its mother, not sideways or down', () => {

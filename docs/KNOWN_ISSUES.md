@@ -5,19 +5,33 @@ small demo family). Tests, typecheck, lint and the layout fuzz run are all green
 
 ## Open
 
-- **A big family far to the side hangs off one long limb when everything is open.** A wife sits over the
-  middle of her own descendants, so in the open 700-person tree a husband→wife limb can reach 10,000
-  sideways. It climbs between the rows and stays clear of cards, but it is long.
+- **A wide family still hangs off a long, low-climbing limb when everything is open.** A card whose
+  children sit far apart on both sides cannot be near all of them, and a crowded row only climbs
+  `MAX_CLIMB_STEPS` for one limb. About 15-20% of the limb length in the open 700-person tree is
+  such limbs (none in folded views). Letting them climb more makes the open tree a third taller.
 - **On a phone held upright the tree is small.** Rows make the crown wider than tall, which suits desktop
   screens. Turn the phone sideways, or zoom in.
 - **Two limbs from one parent can braid** where one reaches a staggered row's upper tier and the other
   its lower one (about 6 pairs with 700 open; none between different families).
 - **Adding one person to a fully open big tree moves many cards.** A new card widens its row, so the
   families beside it shift over. Folded views barely move.
-- **Generation labels are large next to a tiny tree on a phone at 1–5% zoom** and cover the left
-  branch; crowded ones hide.
 
 ## Fixed (2026-10-05)
+
+- **Long flat limbs, a lopsided crown, bare holes, drifting labels, jammed rows, unreadable cards.**
+  - The tidy tree centres a card between its outermost children, so a line out to one side made all
+    its sideways trip in one flat limb, then rose as a straight column. Each card now slides to the
+    middle of its parent and its children (a childless one towards its parent), so the trip spreads
+    over the line and every limb climbs. Total sideways reach in the open 700 tree fell 6-11%.
+  - The founder and every card carrying over a quarter of the crown (`CROWN_SHARE`) stand under the
+    middle of their people, so the trunk is under the crown (it was 16-41% of the width off centre).
+  - A row of few cards (low in the tree) may climb up to `CLIMB_CARDS / cards` steps, and `CLIMB` is
+    0.4, so the main boughs rise instead of running flat.
+  - The leafy crown also grows round the middle of every limb, which filled the bare hole between them.
+  - Generation labels sit level with their row in two columns, both sides of the crown, and stay on
+    screen when zoomed in.
+  - The two tiers of a crowded row are further apart (`TIER_RISE`) with more room sideways.
+  - Cards turn to dots below 22% zoom (names are under 4px there), not 10%.
 
 - **Limbs swept across the whole crown; the tree was three times wider than tall.** A row of many small
   families (17 cards in a 39-card view) laid flat side by side was as wide as all its cards, so every

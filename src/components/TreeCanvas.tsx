@@ -22,9 +22,9 @@ const CULL_INTERVAL_MS = 120
 const NODE_REACH = 120
 /** Below this zoom the bark veins are under a pixel wide and are not drawn. */
 const FAR_ZOOM = 0.05
-/** Below this zoom cards are drawn as dots of DOT_PX screen radius (cards are then a few pixels wide). */
-const DOT_ZOOM = 0.1
-const DOT_PX = 3.5
+/** Below this zoom cards are drawn as dots of DOT_PX screen radius (names are then under 4px, unreadable). */
+const DOT_ZOOM = 0.22
+const DOT_PX = 4
 /** A press that travels further than this (CSS px) was a pan, not a tap. */
 const TAP_SLOP = 10
 /** Screen-px of forgiveness around a card, so cards stay tappable at a zoomed-out fit. */
@@ -32,7 +32,11 @@ const TAP_PAD = 12
 
 /** Generation labels whose rows are closer than this on screen (px) and overlap sideways hide the later one. */
 const LABEL_GAP = 22
-/** Screen room (px) the whole-tree fit keeps left of the tree for generation labels. */
+/** Screens narrower than this (px) label generations on the left only. */
+const TWO_LABELS = 640
+/** Labels stay at least this far (px) inside the screen's edges. */
+const LABEL_EDGE = 6
+/** Screen room (px) the whole-tree fit keeps each side of the tree for generation labels. */
 const LABEL_ROOM = 80
 /** Half the width of the trunk's spread roots, which a fit always keeps on screen. */
 const ROOTS_HALF_WIDTH = 220
@@ -180,7 +184,10 @@ export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onR
   }, [])
 
   const labelsRef = useRef<HTMLDivElement>(null)
-  /** Pins each generation label to the end of its ring, hiding any that would crowd the one before. */
+  /**
+   * Pins each generation's two labels level with its row, one each side of the crown, kept on screen when
+   * the crown runs off it; a label that would crowd the one before steps aside or hides.
+   */
   const placeLabels = useCallback((t: ZoomTransform) => {
     const el = labelsRef.current
     if (!el) return
@@ -188,17 +195,25 @@ export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onR
     for (const span of Array.from(el.children) as HTMLElement[]) {
       const ring = layoutRef.current.rings[Number(span.dataset.index)]
       if (!ring) continue
-      // Anchored on the label's right edge; the width is only known once it is on the page.
-      const x = t.x + ring.x * t.k
+      // A phone has no width to spare for a second column.
+      if (span.dataset.side === 'right' && el.clientWidth < TWO_LABELS) {
+        span.style.visibility = 'hidden'
+        continue
+      }
+      // The width is only known once it is on the page.
       const w = span.offsetWidth || 60
-      const free = (y: number) => shown.every(([sx, sy, sw]) => Math.abs(sy - y) >= LABEL_GAP || x <= sx - sw || x - w >= sx)
+      const left =
+        span.dataset.side === 'right'
+          ? Math.min(t.x + ring.xr * t.k, el.clientWidth - w - LABEL_EDGE)
+          : Math.max(t.x + ring.x * t.k, w + LABEL_EDGE) - w
+      const free = (y: number) => shown.every(([sx, sy, sr]) => Math.abs(sy - y) >= LABEL_GAP || left + w <= sx || left >= sr)
       // A crowded label steps up or down beside its generation (up first: that is where it grows) before it gives up and hides.
       const at = t.y + ring.y * t.k
       const y = [0, -0.5, 0.5, -1, 1, -1.5, -2].map((step) => at + step * LABEL_GAP).find(free)
       const show = y !== undefined
       span.style.visibility = show ? '' : 'hidden'
-      span.style.transform = `translate(${x}px, ${y ?? at}px) translate(-100%, -50%)`
-      if (show) shown.push([x, y, w])
+      span.style.transform = `translate(${left}px, ${y ?? at}px) translate(0, -50%)`
+      if (show) shown.push([left, y, left + w])
     }
   }, [])
 
@@ -323,10 +338,11 @@ export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onR
       const bottom = (TRUNK_DEPTH + trunkExtra(layoutRef.current)) * trunkScale
       // A phone has no width to spare for a wide margin.
       const padding = Math.min(50, svg.clientWidth * 0.04)
-      // The generation labels hang off the left of the tree: keep screen room for them.
+      // The generation labels hang off the sides of the tree (only the left on a phone): keep screen room for them.
       const labels = layoutRef.current.rings.length ? LABEL_ROOM : 0
-      const k = Math.min((svg.clientWidth - padding * 2 - labels) / (right - left), (svg.clientHeight - padding * 2) / (bottom - top), 1.2)
-      moveCamera((left + right) / 2 - labels / 2 / k, (top + bottom) / 2, k, animate)
+      const sides = svg.clientWidth < TWO_LABELS ? 1 : 2
+      const k = Math.min((svg.clientWidth - padding * 2 - labels * sides) / (right - left), (svg.clientHeight - padding * 2) / (bottom - top), 1.2)
+      moveCamera((left + right) / 2 - (sides === 1 ? labels / 2 / k : 0), (top + bottom) / 2, k, animate)
     },
     [moveCamera],
   )
@@ -524,15 +540,18 @@ export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onR
       </svg>
 
       <div ref={labelsRef} className="pointer-events-none absolute inset-0 z-10 overflow-hidden" aria-hidden>
-        {layout.rings.map((ring, i) => (
-          <span
-            key={ring.generation}
-            data-index={i}
-            className="absolute top-0 left-0 whitespace-nowrap rounded-full bg-[#3b2412]/75 px-2 py-0.5 text-[11px] font-bold text-amber-50 shadow sm:text-xs"
-          >
-            الجيل {ring.generation}
-          </span>
-        ))}
+        {layout.rings.flatMap((ring, i) =>
+          (['left', 'right'] as const).map((side) => (
+            <span
+              key={`${ring.generation}-${side}`}
+              data-index={i}
+              data-side={side}
+              className="absolute top-0 left-0 whitespace-nowrap rounded-full bg-[#3b2412]/75 px-2 py-0.5 text-[11px] font-bold text-amber-50 shadow sm:text-xs"
+            >
+              الجيل {ring.generation}
+            </span>
+          )),
+        )}
       </div>
 
       {actions && (
