@@ -102,10 +102,16 @@ const LIMB_THICK = 0.4
 /** How hard touching cards shove each other, and how much room every piece of wood keeps round it. */
 const SHOVE = 1.5
 const ROOM = 0.5
+/** Extra room cards keep while the springs settle, so trimming limbs back to length after leaves none touching. */
+const SLACK = 35
 /** Steps of letting the wood settle like springs. */
 const SIM_TICKS = 300
 /** Rounds of trimming the springs back to length and letting the cards settle again. */
 const TRIMS = 3
+/** Rounds of swinging cards that still touch round their parents (lengths kept). */
+const UNTANGLE_ROUNDS = 60
+/** Biggest family (pieces of wood) a single untangling swing may carry. */
+const UNTANGLE_FAMILY = 150
 /** Rounds of pushing colliding families apart. */
 const SETTLE_ROUNDS = 60
 
@@ -257,7 +263,18 @@ export function computeLayout(data: TreeNode, index: TreeIndex): TreeLayout {
     return piece
   }
   const grow = (n: HierarchyNode<TreeNode>, at: Piece) => {
-    const kids = kidsOf(n)
+    const sprouts = kidsOf(n)
+    if (!sprouts.length) return
+    // Wives hang straight off their husband, one piece each, fanned round his heading, so a wife's
+    // limb is as long as any other. Only children sprout along a stem.
+    const wives = sprouts.filter((k) => k.data.type === 'wife')
+    const fan = wives.length + (sprouts.length > wives.length ? 1 : 0)
+    const tilt = wobble(n.data.id, 7) * WOBBLE * 0.4
+    wives.forEach((w, i) => {
+      const spread = fan > 1 ? (i / (fan - 1) - 0.5) * Math.min(2 * TWIG, 0.7 * (fan - 1)) : 0
+      grow(w, add(w, at, tilt + spread + wobble(w.data.id, 2) * WOBBLE * 0.3, w.data.id))
+    })
+    const kids = sprouts.filter((k) => k.data.type !== 'wife')
     if (!kids.length) return
     const lead = kids.reduce((best, k) => (size.get(k)! > size.get(best)! ? k : best), kids[0])
     // First-born nearest the parent. Side twigs sprout in pairs, one each side of a knot (a lone one
@@ -394,7 +411,7 @@ export function computeLayout(data: TreeNode, index: TreeIndex): TreeLayout {
       const p = b.p
       if (p.card) {
         const { hw, hh } = cardHalf(p.card.data.type, !!p.card.data.husband)
-        items.push({ b, t: 1, cx: b.x!, cy: b.y!, hw: hw + PAD_X, hh: hh + PAD_X })
+        items.push({ b, t: 1, cx: b.x!, cy: b.y!, hw: hw + PAD_X + SLACK, hh: hh + PAD_X + SLACK })
       }
       if (!p.parent) continue
       const from = bodyOf.get(p.parent)!
@@ -483,12 +500,106 @@ export function computeLayout(data: TreeNode, index: TreeIndex): TreeLayout {
     }
     for (const b of bodies) if (b.p.parent) (b.x = b.p.x), (b.y = b.p.y), (b.vx = 0), (b.vy = 0)
   }
+  /**
+   * Trimming moves whole families, so a few cards end up touching again. Each such card (or, failing
+   * that, a bough below it) swings round the card it hangs from, carrying its family, but only when the
+   * swing leaves less overlap and the limb still climbs. A swing changes no limb's length.
+   */
+  const untangle = () => {
+    const kidsOfPiece = new Map<Piece, Piece[]>()
+    for (const p of pieces) if (p.parent) kidsOfPiece.set(p.parent, [...(kidsOfPiece.get(p.parent) ?? []), p])
+    const familyOf = (p: Piece) => {
+      const out: Piece[] = []
+      const stack = [p]
+      while (stack.length) {
+        const q = stack.pop()!
+        out.push(q)
+        stack.push(...(kidsOfPiece.get(q) ?? []))
+      }
+      return out
+    }
+    const swing = (family: Piece[], ox: number, oy: number, angle: number) => {
+      const [c, sn] = [Math.cos(angle), Math.sin(angle)]
+      for (const q of family) {
+        const [dx, dy] = [q.x - ox, q.y - oy]
+        q.x = ox + dx * c - dy * sn
+        q.y = oy + dx * sn + dy * c
+      }
+    }
+    const half = (p: Piece) => cardHalf(p.card!.data.type, !!p.card!.data.husband)
+    const cards = pieces.filter((p) => p.card)
+    for (let round = 0; round < UNTANGLE_ROUNDS; round++) {
+      const grid = new Map<string, Piece[]>()
+      for (const p of cards) {
+        const key = `${Math.floor(p.x / CELL)},${Math.floor(p.y / CELL)}`
+        const cell = grid.get(key)
+        if (cell) cell.push(p)
+        else grid.set(key, [p])
+      }
+      /** Total overlap between the cards in `moved` and every card outside it. */
+      const clash = (moved: Set<Piece>) => {
+        let sum = 0
+        for (const a of moved) {
+          if (!a.card) continue
+          const ha = half(a)
+          const [gx, gy] = [Math.floor(a.x / CELL), Math.floor(a.y / CELL)]
+          for (let i = -1; i <= 1; i++)
+            for (let j = -1; j <= 1; j++)
+              for (const b of grid.get(`${gx + i},${gy + j}`) ?? []) {
+                if (moved.has(b)) continue
+                const hb = half(b)
+                const ox = ha.hw + hb.hw + 2 - Math.abs(a.x - b.x)
+                const oy = ha.hh + hb.hh + 2 - Math.abs(a.y - b.y)
+                if (ox > 0 && oy > 0) sum += Math.min(ox, oy)
+              }
+        }
+        return sum
+      }
+      let moves = 0
+      for (const a of cards) {
+        if (!a.parent || !clash(new Set([a]))) continue
+        // Try swinging the card (then the boughs below it) round its parent, or sliding it along its limb.
+        let best: { family: Piece[]; move: (sign: 1 | -1) => void; gain: number } | null = null
+        for (let pivot = a, up = 0; up < 6 && pivot.parent; pivot = pivot.parent, up++) {
+          const family = familyOf(pivot)
+          if (family.length > UNTANGLE_FAMILY) break
+          const moved = new Set(family)
+          const before = clash(moved)
+          const [ox, oy] = [pivot.parent!.x, pivot.parent!.y]
+          const d = Math.hypot(pivot.x - ox, pivot.y - oy) || 1
+          const [ux, uy] = [(pivot.x - ox) / d, (pivot.y - oy) / d]
+          const tries: Array<(sign: 1 | -1) => void> = [
+            ...[0.02, -0.02, 0.05, -0.05, 0.1, -0.1, 0.2, -0.2, 0.35, -0.35].map((angle) => (sign: 1 | -1) => swing(family, ox, oy, sign * angle)),
+            ...[1 - STRETCH, 0.9, 1.1, 1 + STRETCH].map((f) => (sign: 1 | -1) => {
+              const by = sign * (f * limb - d)
+              for (const q of family) (q.x += ux * by), (q.y += uy * by)
+            }),
+          ]
+          for (const move of tries) {
+            move(1)
+            const climbs = oy - pivot.y >= 0.25 * Math.abs(pivot.x - ox)
+            const gain = climbs ? before - clash(moved) : 0
+            move(-1)
+            if (gain > 0.5 && (!best || gain > best.gain)) best = { family, move, gain }
+          }
+          if (best) break
+        }
+        if (best) {
+          best.move(1)
+          moves++
+        }
+      }
+      if (!moves) break
+    }
+  }
+
   // Trim, let the cards that now touch shove apart again, and trim once more.
   for (let i = 0; i < TRIMS; i++) {
     trim()
     sim.alpha(0.3).tick(SIM_TICKS / 3)
   }
   trim()
+  untangle()
 
   const x = new Map<string, number>()
   const y = new Map<string, number>()
