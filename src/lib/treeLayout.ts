@@ -1,4 +1,6 @@
-import { hierarchy, tree } from 'd3-hierarchy'
+import { forceLink, forceManyBody, forceSimulation } from 'd3-force'
+import type { SimulationNodeDatum } from 'd3-force'
+import { hierarchy } from 'd3-hierarchy'
 import type { HierarchyNode } from 'd3-hierarchy'
 import type { Gender, NodeType, TreeNode } from '../model'
 import { branchBark, taperedPolylinePath } from './geometry'
@@ -12,6 +14,10 @@ export const WIFE_H = 44
 /** A married daughter is two wife-sized pills (hers and her husband's) overlapping like ∞. */
 export const COUPLE_OVERLAP = 14
 export const COUPLE_W = 2 * WIFE_W - COUPLE_OVERLAP
+
+/** One colour per generation (the founder's is 1), so a generation reads at a glance without rows. */
+export const GEN_COLOURS = ['#7c2d12', '#15803d', '#0369a1', '#7e22ce', '#b45309', '#be123c', '#0f766e', '#4338ca', '#a16207', '#c2410c', '#1d4ed8', '#9d174d', '#3f6212', '#6d28d9', '#0e7490', '#854d0e']
+export const genColour = (generation: number) => GEN_COLOURS[(generation - 1) % GEN_COLOURS.length]
 
 /** Collapse badge: 22 world units tall, anchored on the card's top leading corner. */
 const BADGE_H = 22
@@ -71,41 +77,37 @@ export const WIFE_STEP = 85
 /** Mother → child: slightly longer branch. */
 export const CHILD_STEP = 140
 
-/** Room between neighbouring cards in a row. */
+/** Room kept round every card. */
 const PAD_X = 8
-/** Neighbours with different parents keep this much more room than siblings. */
-const COUSIN_PAD = 24
-/** Room between a generation label and the card it names. */
-const LABEL_GAP = 16
 
-/**
- * Every generation of the tree is one row, and every row is as wide as its people need. (The crown used
- * to be rings round the founder, but a ring near the trunk is short: a family that did not fit side by
- * side on it pushed the whole ring, and every limb of that generation, up and out.) A row is only as far
- * above the one before as its limbs need: a step, a few limb widths for thick ones, and enough rise that
- * a limb reaching far sideways still climbs.
+/*
+ * Organic crown: no rows. Every piece of wood is straight and about the same length; children sprout
+ * along their parent's stem like shoots on a branch. Every piece gets its own small, fixed tilt and
+ * length (from its id), so no two forks look alike and the crown is never mirror-symmetric. Cards that still collide push their families
+ * apart: the two limbs they hang from swing away from each other until nothing touches. Every limb
+ * is about the same length (within STRETCH of it); where swinging is not enough, all of them grow together.
  */
-const CLIMB = 0.4
-/**
- * …but a crowded row never climbs more than this many steps for one far-reaching limb, since every
- * other limb into the row grows with it. A row of few cards (low in the tree, where the limbs reach
- * furthest) may climb up to CLIMB_CARDS / cards steps, so its limbs rise instead of running flat.
- */
-const MAX_CLIMB_STEPS = 3
-const CLIMB_CARDS = 24
-/**
- * A row of children with this many cards packs them in two staggered tiers, every other card a little higher, so
- * neighbours may overlap sideways. A row of many small families is then about half as wide, and the
- * limbs that reach across to it about half as long. (One flat row of 17 cards made a 39-card view three
- * times wider than tall, with limbs sweeping across the whole crown.)
- */
-const TIER_CARDS = 6
-/** The upper tier sits this far above the lower one. */
-const TIER_RISE = MEMBER_H + 26
-/** Rounds of sliding each card to the middle of its parent and its family. */
-const SPREAD_PASSES = 40
-/** …except cards carrying more than this share of the cards on show: they stand under their people. */
-const CROWN_SHARE = 0.25
+/** A side twig leaves its stem at this angle (radians). */
+const TWIG = 1.0
+/** No limb leans further than this from straight up (radians), so the crown never droops. */
+const MAX_LEAN = 1.3
+/** How much each family's tilt and length are allowed to wander (fraction). */
+const WOBBLE = 0.3
+/** Every limb is the same length, give or take this fraction. */
+const STRETCH = 0.2
+/** Length of every piece of wood (give or take STRETCH). */
+const LIMB = 220
+/** A limb is never thicker than this fraction of its length, so it reads as a limb, not a knot. */
+const LIMB_THICK = 0.4
+/** How hard touching cards shove each other, and how much room every piece of wood keeps round it. */
+const SHOVE = 1.5
+const ROOM = 0.5
+/** Steps of letting the wood settle like springs. */
+const SIM_TICKS = 300
+/** Rounds of trimming the springs back to length and letting the cards settle again. */
+const TRIMS = 3
+/** Rounds of pushing colliding families apart. */
+const SETTLE_ROUNDS = 60
 
 /** Branch width: the trunk top for the founder, then 25% thinner every generation. */
 const TRUNK_TOP = 48
@@ -119,28 +121,25 @@ const MIN_LIMB = 3
 const FAMILY_WIDTH = 12
 /** A limb flares at most this much wider than the branch it becomes, where it leaves its parent. */
 const FLARE = 1.3
-/** A card sits at least this many of its parent's branch widths away from it. */
-const KNOT_CLEAR = 1.2
 /** Widest a branch may end under a card that nothing grows from. */
 const LEAF_TIP = MEMBER_H * 0.5
-/** A row sits at least this many of its limb widths above the one before. */
-const LIMB_LENGTH = 2.5
-/** Husband → wife is a fork rather than a limb: shorter, but still longer than it is thick. */
-const WIFE_LIMB_LENGTH = 1.3
 /** Cards on show for each step up in trunk scale (the trunk scales with the square root of the count). */
 const TRUNK_CARDS = 40
 
-/** How far along the limb its ends keep their heading (fraction of the limb's length). */
-const LIMB_BEND = 0.4
-/** …but never further than this many times its rise. */
-const RISE_BEND = 1
-/** A limb leaves its parent between "straight at the child" (0) and "straight up" (large). */
-const LEAVE_UP = 0.6
-/** …and arrives heading up, leaning this much towards where it came from. */
-const ARRIVE_LEAN = 0.35
+/** A limb bows gently to one side by up to this fraction of its length (never winds). */
+const BOW = 0.07
 
 /** Points sampled along each branch's centre-line. */
-const BRANCH_SAMPLES = 16
+const BRANCH_SAMPLES = 8
+
+/** Fixed number in [-1, 1] for an id, so a family keeps its own tilt from one render to the next. */
+function wobble(id: string, salt: number): number {
+  let h = 2166136261 ^ salt
+  for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 16777619)
+  h = Math.imul(h ^ (h >>> 15), 2246822507)
+  h ^= h >>> 13
+  return ((h >>> 0) / 4294967295) * 2 - 1
+}
 
 export interface LayoutNode {
   id: string
@@ -204,11 +203,6 @@ export interface TreeLayout {
 const cardW = (n: TreeNode) => (n.unknown ? 0 : 2 * cardHalf(n.type, !!n.husband).hw)
 const cardH = (n: TreeNode) => (n.unknown ? 0 : 2 * cardHalf(n.type, !!n.husband).hh)
 
-const unit = (x: number, y: number): Point => {
-  const len = Math.hypot(x, y) || 1
-  return [x / len, y / len]
-}
-
 /** Width of every branch of one generation (the founder's equals the trunk top). */
 const limbWidth = (generation: number, trunkScale: number) => Math.max(MIN_LIMB, TRUNK_TOP * trunkScale * TAPER ** (generation - 1))
 
@@ -216,13 +210,6 @@ export function computeLayout(data: TreeNode, index: TreeIndex): TreeLayout {
   const root = hierarchy(data, (d) => (d.collapsed ? null : d.children))
   const all = root.descendants()
 
-  const levels: Array<Array<HierarchyNode<TreeNode>>> = []
-  for (const n of all) (levels[n.depth] ??= []).push(n)
-  const step = levels.map((ring, depth) => {
-    const cards = ring.filter((n) => !n.data.unknown)
-    if (!depth || !cards.length) return 0
-    return cards[0].data.type === 'wife' ? WIFE_STEP : CHILD_STEP
-  })
 
   /** The trunk (and so every limb) grows with the number of cards on show. */
   const shown = all.filter((n) => !n.data.unknown).length
@@ -238,123 +225,279 @@ export function computeLayout(data: TreeNode, index: TreeIndex): TreeLayout {
   const limbFrom = (n: HierarchyNode<TreeNode>) => (n.parent?.data.unknown ? n.parent.parent! : n.parent!)
   /** Width of the limb to a card where it leaves its parent. */
   const baseWidth = (n: HierarchyNode<TreeNode>) => Math.min(branchWidth(limbFrom(n)), FLARE * branchWidth(n))
-  /**
-   * Thick limbs need length to read as limbs rather than knots: a card sits at least a few of its limb's
-   * widths out, and clear of the wood it grows from (a twig off the trunk must not sit inside the trunk).
-   */
-  const limbNeed = (n: HierarchyNode<TreeNode>) => {
-    if (!n.parent || n.data.unknown) return 0
-    const own = (step[n.depth] === CHILD_STEP ? LIMB_LENGTH : WIFE_LIMB_LENGTH) * baseWidth(n)
-    return Math.max(step[n.depth], own, KNOT_CLEAR * branchWidth(limbFrom(n)) + cardH(n.data) / 2)
-  }
 
-  // Across: a tidy tree in world units, so neighbours are exactly as far apart as their cards (and the
-  // limbs of two families between them) need.
-  // Wife rows stay flat: their step is short, so a limb reaching far sideways has no room to swing
-  // under the lower tier, and a wife's children spread her row out anyway.
-  const tiered = levels.map((level, d) => step[d] === CHILD_STEP && level.filter((n) => !n.data.unknown).length >= TIER_CARDS)
-  const separation = (a: HierarchyNode<TreeNode>, b: HierarchyNode<TreeNode>) => {
-    // Staggered: a card only has to clear its neighbours on the other tier by a limb's width, so the
-    // limb to the card between two others still passes between them.
-    if (tiered[a.depth]) return Math.max(cardW(a.data), cardW(b.data)) / 2 + Math.max(baseWidth(a), baseWidth(b)) / 2 + 3 * PAD_X + 2
-    const cards = (cardW(a.data) + cardW(b.data)) / 2 + PAD_X + (a.parent === b.parent ? 0 : COUSIN_PAD)
-    // Branches of different families must not merge (siblings may: they fork from one limb anyway).
-    const limbs = a.parent === b.parent ? 0 : (baseWidth(a) + baseWidth(b)) / 2 + PAD_X
-    return Math.max(cards, limbs) + 2
-  }
-  tree<TreeNode>().nodeSize([1, 1]).separation(separation)(root)
-  // Mirrored: the first-born (smallest d3 x) sits on the right, matching Arabic reading order.
-  const x = new Map(all.map((n) => [n.data.id, n.data.unknown ? 0 : -n.x!]))
-  const people = all.filter((n) => n.parent && !n.data.unknown)
-  /** The cards on show above each card that carries much of the crown. */
-  const crowns = new Map<HierarchyNode<TreeNode>, Array<HierarchyNode<TreeNode>>>()
-  for (const n of people) {
-    const up = n.descendants().filter((k) => k !== n && !k.data.unknown)
-    if (up.length > CROWN_SHARE * people.length) crowns.set(n, up)
-  }
+  /** Cards on show on a branch: the card and everyone open above it. */
+  const size = new Map<HierarchyNode<TreeNode>, number>()
+  for (const n of [...all].reverse()) size.set(n, (n.data.unknown ? 0 : 1) + (n.children ?? []).reduce((s, k) => s + size.get(k)!, 0))
+  /** A card's children as drawn: an unknown mother's children grow from her husband. */
+  const kidsOf = (n: HierarchyNode<TreeNode>): Array<HierarchyNode<TreeNode>> => (n.children ?? []).flatMap((k) => (k.data.unknown ? kidsOf(k) : [k]))
 
   /*
-   * The tidy tree puts every parent over the middle of its family, so a line that runs far out to one
-   * side does all its travelling in one long, flat limb low down and then rises as a straight column.
-   * Each card slides to the middle of its parent and its family (never past its neighbours in the row),
-   * so the sideways reach spreads over every limb of the line and each one climbs; a card with no
-   * family moves towards its parent.
+   * The wood is a tree of equal pieces. A card with one child grows a single limb to it. A card with
+   * several grows a stem: its biggest family carries the stem on to its end, and the others sprout off
+   * it one after another as side twigs, left and right in turn, like the shoots along a real branch.
    */
-  const fed = new Map<HierarchyNode<TreeNode>, Array<HierarchyNode<TreeNode>>>()
-  for (const n of all) if (n.parent && !n.data.unknown) fed.set(limbFrom(n), [...(fed.get(limbFrom(n)) ?? []), n])
-  const rows = levels.map((level) => level.filter((n) => !n.data.unknown).sort((a, b) => x.get(a.data.id)! - x.get(b.data.id)!))
-  for (let pass = 0; pass < SPREAD_PASSES; pass++)
-    for (const row of rows)
-      row.forEach((n, i) => {
-        const kids = fed.get(n) ?? []
-        if (!n.parent && !kids.length) return
-        let target: number
-        if (!n.parent || crowns.has(n)) {
-          // The heart of the tree (the founder, so the trunk, and the cards carrying much of the crown)
-          // stands under the middle of its people, so the crown sits balanced over the trunk. Free to
-          // slide like the rest it drifts off to one side, and the trunk ends up under nothing.
-          const up = crowns.get(n) ?? people
-          target = up.reduce((sum, k) => sum + x.get(k.data.id)!, 0) / up.length
-        } else {
-          // The middle of its parent and its children: the limbs to them are then no longer in all (a
-          // card over a big family stays over it), and a card in a lone line moves halfway along it.
-          const ends = [limbFrom(n), ...kids].map((k) => x.get(k.data.id)!).sort((a, b) => a - b)
-          target = (ends[(ends.length - 1) >> 1] + ends[ends.length >> 1]) / 2
-        }
-        const [prev, next] = [row[i - 1], row[i + 1]]
-        if (prev) target = Math.max(target, x.get(prev.data.id)! + separation(prev, n))
-        if (next) target = Math.min(target, x.get(next.data.id)! - separation(n, next))
-        x.set(n.data.id, target)
-      })
-  // The founder stands at 0, and an unknown mother exactly on her husband.
-  const founderX = x.get(root.data.id)!
-  for (const n of all) x.set(n.data.id, n.data.unknown ? 0 : x.get(n.data.id)! - founderX)
-  for (const n of all) if (n.data.unknown) x.set(n.data.id, x.get(n.parent!.data.id)!)
-
-  // Which cards of a staggered row go up a tier: left to right, a card goes up only where it would
-  // overlap the last card on the lower tier.
-  const lift = new Set<string>()
-  levels.forEach((level, d) => {
-    if (!tiered[d]) return
-    let edge = -Infinity
-    for (const n of level.filter((m) => !m.data.unknown).sort((a, b) => x.get(a.data.id)! - x.get(b.data.id)!)) {
-      const [cx, half] = [x.get(n.data.id)!, cardW(n.data) / 2]
-      if (cx - half < edge + PAD_X) lift.add(n.data.id)
-      else edge = cx + half
-    }
-  })
-
-  // Up: each row as far above the last as its limbs need.
-  const rowY: number[] = [0]
-  /** Top of each row's cards: its upper tier when it has one. */
-  const rowTop: number[] = [0]
-  const tierOf = (n: HierarchyNode<TreeNode>) => (lift.has(n.data.id) ? TIER_RISE : 0)
-  for (let d = 1; d < levels.length; d++) {
-    const cards = levels[d].filter((n) => !n.data.unknown)
-    // Never closer to the last row's top tier than a card's height and a little room for limbs.
-    let need = cards.length && levels[d - 1].some((n) => !n.data.unknown) ? MEMBER_H + 20 : 0
-    for (const n of cards) {
-      const from = limbFrom(n)
-      // Rows between the parent and this one already lift the limb (an unknown mother's row is empty).
-      // A limb from a staggered row only starts to turn once it is past its row's upper tier.
-      const below = rowTop[from.depth] - rowTop[d - 1]
-      const own = limbNeed(n) - below
-      const climb = Math.min(Math.max(MAX_CLIMB_STEPS, CLIMB_CARDS / cards.length) * step[d], CLIMB * Math.abs(x.get(n.data.id)! - x.get(from.data.id)!) - below)
-      need = Math.max(need, own, climb)
-    }
-    rowY[d] = rowTop[d - 1] - (cards.length ? need : 0)
-    rowTop[d] = rowY[d] - (cards.some((n) => lift.has(n.data.id)) ? TIER_RISE : 0)
+  interface Piece {
+    card: HierarchyNode<TreeNode> | null
+    parent: Piece | null
+    /** Lean from the parent piece's heading (radians), and length as a share of `limb`. */
+    rel: number
+    f: number
+    x: number
+    y: number
+    heading: number
+    key: string
   }
-  const yOf = (n: HierarchyNode<TreeNode>): number => (n.data.unknown ? yOf(limbFrom(n)) : rowY[n.depth] - tierOf(n))
-  const top = -rowTop[rowTop.length - 1]
-  /** Limbs head up from a point this far below the founder, so the outer ones lean out like a crown. */
-  const focus = Math.max(top, 400) * 0.5
-  const outward = (p: { x: number; y: number }): Point => unit(p.x, p.y - focus)
+  const pieces: Piece[] = []
+  const pieceOf = new Map<HierarchyNode<TreeNode>, Piece>()
+  const add = (card: HierarchyNode<TreeNode> | null, parent: Piece | null, rel: number, key: string) => {
+    const piece: Piece = { card, parent, rel, f: 1 + wobble(key, 3) * STRETCH * 0.5, x: 0, y: 0, heading: 0, key }
+    pieces.push(piece)
+    if (card) pieceOf.set(card, piece)
+    return piece
+  }
+  const grow = (n: HierarchyNode<TreeNode>, at: Piece) => {
+    const kids = kidsOf(n)
+    if (!kids.length) return
+    const lead = kids.reduce((best, k) => (size.get(k)! > size.get(best)! ? k : best), kids[0])
+    // First-born nearest the parent. Side twigs sprout in pairs, one each side of a knot (a lone one
+    // on this family's own side), so a big family's stem is half as long.
+    const side = wobble(n.data.id, 5) < 0 ? -1 : 1
+    const rest = kids.filter((k) => k !== lead)
+    let stem = at
+    for (let i = 0; i < rest.length; i += 2) {
+      stem = add(null, stem, wobble(`${n.data.id}:${i}`, 6) * WOBBLE * 0.4, `${n.data.id}:${i}`)
+      rest.slice(i, i + 2).forEach((k, j) => {
+        const twig = add(k, stem, (j ? -side : side) * (TWIG + wobble(k.data.id, 2) * WOBBLE * 0.5), k.data.id)
+        grow(k, twig)
+      })
+    }
+    grow(lead, add(lead, stem, kids.length === 1 ? wobble(lead.data.id, 2) * WOBBLE * 0.6 : wobble(lead.data.id, 2) * WOBBLE * 0.4, lead.data.id))
+  }
+  const founder = add(root, null, 0, root.data.id)
+  grow(root, founder)
 
+  /** The one length of every piece of wood. */
+  const limb = Math.max(LIMB, ...all.filter((n) => !n.data.unknown).map((n) => cardH(n.data) + 2 * PAD_X))
+  const thick = (w: number) => Math.min(w, limb * LIMB_THICK)
+  const place = () => {
+    for (const p of pieces) {
+      if (!p.parent) continue
+      p.heading = Math.max(-MAX_LEAN, Math.min(MAX_LEAN, p.parent.heading + p.rel))
+      p.x = p.parent.x + p.f * limb * Math.sin(p.heading)
+      p.y = p.parent.y - p.f * limb * Math.cos(p.heading)
+    }
+  }
+  const lineage = (p: Piece) => {
+    const out: Piece[] = []
+    for (let at: Piece | null = p; at; at = at.parent) out.push(at)
+    return out
+  }
+  /** The piece just below `top` on the way to `p`. */
+  const below = (p: Piece, top: Piece) => {
+    let at = p
+    while (at.parent && at.parent !== top) at = at.parent
+    return at
+  }
+  /** Width of the wood of a piece: as thick as the families it still carries. */
+  const pieceWidth = new Map<Piece, number>()
+  for (const p of [...pieces].reverse()) {
+    const own = p.card?.parent ? thick(baseWidth(p.card)) : 0
+    pieceWidth.set(p, Math.max(own, pieceWidth.get(p) ?? 0))
+    if (p.parent) pieceWidth.set(p.parent, Math.max(pieceWidth.get(p.parent) ?? 0, pieceWidth.get(p)!))
+  }
+
+  const CELL = 200
+  for (let round = 0; round < SETTLE_ROUNDS; round++) {
+    place()
+    // Things that must not touch: every card, and points along every piece of wood (wood under a card hides it).
+    type Item = { p: Piece; cx: number; cy: number; hw: number; hh: number; card: boolean }
+    const items: Item[] = []
+    for (const p of pieces) {
+      if (p.card) {
+        const { hw, hh } = cardHalf(p.card.data.type, !!p.card.data.husband)
+        items.push({ p, cx: p.x, cy: p.y, hw: hw + PAD_X, hh: hh + PAD_X, card: true })
+      }
+      if (!p.parent) continue
+      const r = pieceWidth.get(p)! / 2 + 2
+      for (const t of [0.3, 0.6]) items.push({ p, cx: p.parent.x + (p.x - p.parent.x) * t, cy: p.parent.y + (p.y - p.parent.y) * t, hw: r, hh: r, card: false })
+    }
+    const grid = new Map<string, Item[]>()
+    for (const it of items)
+      for (let gx = Math.floor((it.cx - it.hw) / CELL); gx <= Math.floor((it.cx + it.hw) / CELL); gx++)
+        for (let gy = Math.floor((it.cy - it.hh) / CELL); gy <= Math.floor((it.cy + it.hh) / CELL); gy++) {
+          const key = `${gx},${gy}`
+          const cell = grid.get(key)
+          if (cell) cell.push(it)
+          else grid.set(key, [it])
+        }
+    const swing = new Map<Piece, number>()
+    const stretch = new Map<Piece, number>()
+    let hits = 0
+    const seen = new Set<string>()
+    for (const cell of grid.values())
+      for (let i = 0; i < cell.length; i++)
+        for (let j = i + 1; j < cell.length; j++) {
+          const [a, b] = [cell[i], cell[j]]
+          if ((!a.card && !b.card) || a.p === b.p) continue
+          const ox = a.hw + b.hw - Math.abs(a.cx - b.cx)
+          const oy = a.hh + b.hh - Math.abs(a.cy - b.cy)
+          if (ox <= 0 || oy <= 0) continue
+          // Wood may touch the card it grows from and the cards right on it.
+          const wood = a.card ? b : a
+          const card = a.card ? a : b
+          if (!wood.card && (card.p === wood.p.parent || card.p.parent === wood.p)) continue
+          const key = a.p.key < b.p.key ? `${a.p.key}|${b.p.key}` : `${b.p.key}|${a.p.key}`
+          if (seen.has(key)) continue
+          seen.add(key)
+          hits++
+          const up = new Set(lineage(a.p))
+          const lca = lineage(b.p).find((m) => up.has(m))!
+          const overlap = Math.min(ox, oy) + 2
+          if (lca === a.p || lca === b.p) {
+            // A card bumps into its own forebear's wood: the piece above the fork stretches.
+            const kid = below(lca === a.p ? b.p : a.p, lca)
+            stretch.set(kid, Math.max(stretch.get(kid) ?? 0, overlap / limb))
+            continue
+          }
+          const [ca, cb] = [below(a.p, lca), below(b.p, lca)]
+          // Swing the two apart round their fork, keeping their order.
+          const right = ca.rel > cb.rel || (ca.rel === cb.rel && a.cx > b.cx)
+          const reach = Math.max(80, Math.hypot((a.cx + b.cx) / 2 - lca.x, (a.cy + b.cy) / 2 - lca.y))
+          const turn = Math.min(0.04, (overlap / reach) * 0.5)
+          for (const [c, sign] of [[ca, right ? 1 : -1], [cb, right ? -1 : 1]] as const) {
+            // Leaning flat already: stretch instead of swinging further out.
+            if (Math.abs(c.heading + sign * turn) > MAX_LEAN) stretch.set(c, Math.max(stretch.get(c) ?? 0, (overlap * 0.5) / limb))
+            else swing.set(c, (swing.get(c) ?? 0) + sign * turn)
+          }
+        }
+    if (!hits) break
+    for (const [c, t] of swing) c.rel += Math.max(-0.06, Math.min(0.06, t))
+    // A piece may stretch to the top of its range, no further.
+    for (const [c, g] of stretch) c.f = Math.min(1 + STRETCH, c.f + Math.min(g, 0.1))
+  }
+  place()
+  /*
+   * Then everything settles like a real tree: every piece of wood is a spring of its own length, cards
+   * and wood shove each other apart, and every piece is pushed to lean up out of its parent. Families
+   * slip into the gaps beside them instead of the whole crown swinging.
+   */
+  type Body = SimulationNodeDatum & { p: Piece }
+  const bodies: Body[] = pieces.map((p) => ({ p, x: p.x, y: p.y, ...(p.parent ? {} : { fx: 0, fy: 0 }) }))
+  const bodyOf = new Map(bodies.map((b) => [b.p, b]))
+  const springs = bodies.filter((b) => b.p.parent).map((b) => ({ source: bodyOf.get(b.p.parent!)!, target: b, f: b.p.f }))
+  /** Cards (and points along the wood) that touch are pushed apart along the shorter way out. */
+  const shove = (alpha: number) => {
+    type Item = { b: Body; from?: Body; t: number; cx: number; cy: number; hw: number; hh: number }
+    const items: Item[] = []
+    for (const b of bodies) {
+      const p = b.p
+      if (p.card) {
+        const { hw, hh } = cardHalf(p.card.data.type, !!p.card.data.husband)
+        items.push({ b, t: 1, cx: b.x!, cy: b.y!, hw: hw + PAD_X, hh: hh + PAD_X })
+      }
+      if (!p.parent) continue
+      const from = bodyOf.get(p.parent)!
+      const r = pieceWidth.get(p)! / 2 + 2
+      for (const t of [0.35, 0.65]) items.push({ b, from, t, cx: from.x! + (b.x! - from.x!) * t, cy: from.y! + (b.y! - from.y!) * t, hw: r, hh: r })
+    }
+    const grid = new Map<string, Item[]>()
+    for (const it of items)
+      for (let gx = Math.floor((it.cx - it.hw) / CELL); gx <= Math.floor((it.cx + it.hw) / CELL); gx++)
+        for (let gy = Math.floor((it.cy - it.hh) / CELL); gy <= Math.floor((it.cy + it.hh) / CELL); gy++) {
+          const key = `${gx},${gy}`
+          const cell = grid.get(key)
+          if (cell) cell.push(it)
+          else grid.set(key, [it])
+        }
+    const seen = new Set<string>()
+    const push = (it: Item, dx: number, dy: number) => {
+      if (!it.from) {
+        it.b.vx! += dx
+        it.b.vy! += dy
+        return
+      }
+      it.b.vx! += dx * it.t
+      it.b.vy! += dy * it.t
+      it.from.vx! += dx * (1 - it.t)
+      it.from.vy! += dy * (1 - it.t)
+    }
+    for (const cell of grid.values())
+      for (let i = 0; i < cell.length; i++)
+        for (let j = i + 1; j < cell.length; j++) {
+          const [a, c] = [cell[i], cell[j]]
+          if ((a.from && c.from) || a.b === c.b) continue
+          const ox = a.hw + c.hw - Math.abs(a.cx - c.cx)
+          const oy = a.hh + c.hh - Math.abs(a.cy - c.cy)
+          if (ox <= 0 || oy <= 0) continue
+          const wood = a.from ? a : c.from ? c : null
+          const card = wood === a ? c : a
+          if (wood && (card.b === wood.from || card.b.p.parent === wood.b.p)) continue
+          const key = `${a.b.p.key}|${a.t}|${c.b.p.key}|${c.t}`
+          if (seen.has(key)) continue
+          seen.add(key)
+          const k = Math.max(alpha, 0.3) * SHOVE
+          const [dx, dy] = ox < oy ? [(a.cx < c.cx ? -1 : 1) * ox * k, 0] : [0, (a.cy < c.cy ? -1 : 1) * oy * k]
+          push(a, dx, dy)
+          push(c, -dx, -dy)
+        }
+  }
+  /** Every piece leans up out of its parent: never flatter than MAX_LEAN. */
+  const lift = (alpha: number) => {
+    const rise = Math.cos(MAX_LEAN) * limb
+    for (const { source, target } of springs) {
+      const short = target.y! - (source.y! - rise)
+      if (short <= 0) continue
+      target.vy! -= short * alpha * 0.5
+      source.vy! += short * alpha * 0.25
+    }
+  }
+  const sim = forceSimulation(bodies)
+    .stop()
+    .velocityDecay(0.35)
+    .force('wood', forceLink(springs).distance((l) => limb * l.f).strength(0.9).iterations(2))
+    .force('room', forceManyBody<Body>().strength(-limb * ROOM).distanceMax(limb * 3))
+    .force('shove', shove)
+    .force('lift', lift)
+  sim.tick(SIM_TICKS)
+  // Cool down with the shoving alone and the springs, so nothing is left touching.
+  sim.force('room', null).alpha(0.3).alphaDecay(0)
+  sim.tick(SIM_TICKS / 3)
+  /** Springs give a little: pull any piece back within STRETCH of its length, its family along with it. */
+  const trim = () => {
+    for (const b of bodies) (b.p.x = b.x!), (b.p.y = b.y!)
+    const shift = new Map<Piece, [number, number]>()
+    for (const p of pieces) {
+      const [ux, uy] = p.parent ? shift.get(p.parent)! : [0, 0]
+      p.x += ux
+      p.y += uy
+      if (p.parent) {
+        const [dx, dy] = [p.x - p.parent.x, p.y - p.parent.y]
+        const d = Math.hypot(dx, dy) || 1
+        const want = Math.max((1 - STRETCH) * limb, Math.min((1 + STRETCH) * limb, d))
+        const [mx, my] = [(dx / d) * (want - d), (dy / d) * (want - d)]
+        p.x += mx
+        p.y += my
+        shift.set(p, [ux + mx, uy + my])
+      } else shift.set(p, [0, 0])
+    }
+    for (const b of bodies) if (b.p.parent) (b.x = b.p.x), (b.y = b.p.y), (b.vx = 0), (b.vy = 0)
+  }
+  // Trim, let the cards that now touch shove apart again, and trim once more.
+  for (let i = 0; i < TRIMS; i++) {
+    trim()
+    sim.alpha(0.3).tick(SIM_TICKS / 3)
+  }
+  trim()
+
+  const x = new Map<string, number>()
+  const y = new Map<string, number>()
+  for (const p of pieces) if (p.card) x.set(p.card.data.id, p.x), y.set(p.card.data.id, p.y)
+  for (const n of all) if (n.data.unknown) x.set(n.data.id, x.get(limbFrom(n).data.id)!), y.set(n.data.id, y.get(limbFrom(n).data.id)!)
+  const yOf = (n: HierarchyNode<TreeNode>) => y.get(n.data.id)!
+  const top = -Math.min(...all.map(yOf))
   const nodes: LayoutNode[] = []
   const links: LayoutLink[] = []
-  /** Heading of the limb where it reaches each card (parents come before their children in `all`). */
-  const arrival = new Map<string, Point>()
   const byId = new Map<string, LayoutNode>()
   const bounds: Box = { minX: -MEMBER_W / 2, maxX: MEMBER_W / 2, minY: -MEMBER_H / 2, maxY: MEMBER_H / 2 }
   const PAD_Y = 12
@@ -394,48 +537,29 @@ export function computeLayout(data: TreeNode, index: TreeIndex): TreeLayout {
     // A child of an unknown mother branches straight from the father.
     const from = limbFrom(n)
     const pp = { x: x.get(from.data.id)!, y: yOf(from) }
-    /*
-     * One smooth limb: it leaves the parent heading up (the way the parent's own limb grew) and reaches
-     * the child from below, so it never runs along a row. The rows give far-reaching limbs extra height
-     * (CLIMB), so they climb at a slant instead of running flat.
-     */
-    // On a staggered row a limb runs straight up through the gap between the cards beside its card,
-    // and only bends while it is clear of the row: up past the upper tier when it leaves a lower-tier
-    // card, up from below the lower tier when it reaches an upper-tier one.
-    const sunk = tiered[from.depth] && !lift.has(from.data.id)
-    const lifted = lift.has(d.id)
-    const s0 = sunk ? { x: pp.x, y: pp.y - TIER_RISE - MEMBER_H / 2 } : pp
-    const s1 = lifted ? { x: p.x, y: p.y + TIER_RISE + MEMBER_H / 2 } : p
-    const len = Math.hypot(s1.x - s0.x, s1.y - s0.y) || 1
-    const [dx, dy] = [(s1.x - s0.x) / len, (s1.y - s0.y) / len]
-    // The founder's limbs leave the trunk top straight up.
-    const [ox, oy] = sunk ? [0, -1] : (arrival.get(from.data.id) ?? (from.parent ? outward(pp) : [0, -1]))
-    const [ex, ey] = lifted ? [0, -1] : outward(p)
-    // The further a limb reaches sideways for its rise, the straighter up it leaves and arrives, so it
-    // crosses between the rows rather than along them under its neighbours' cards.
-    const flat = Math.max(1, Math.abs(s1.x - s0.x) / Math.max(s0.y - s1.y, 1) / 10)
-    const [ax, ay] = unit(dx + ox * LEAVE_UP * flat, dy + oy * LEAVE_UP * flat)
-    const [bx, by] = lifted ? [0, -1] : unit(ex + (dx * ARRIVE_LEAN) / flat, ey + (dy * ARRIVE_LEAN) / flat)
-    arrival.set(d.id, [bx, by])
-    // A long limb to the side bends only as far as it rises, or it would bulge over the next row.
-    const bend = Math.max(0, Math.min(len * LIMB_BEND, (s0.y - s1.y) * RISE_BEND))
-    const c1: Point = [s0.x + ax * bend, s0.y + ay * bend]
-    const c2: Point = [s1.x - bx * bend, s1.y - by * bend]
-    const centre: Point[] = sunk ? [[pp.x, pp.y], [pp.x, (pp.y + s0.y) / 2]] : []
-    for (let i = 0; i <= BRANCH_SAMPLES; i++) {
-      const t = i / BRANCH_SAMPLES
-      const mt = 1 - t
-      const [a, b, c, e] = [mt * mt * mt, 3 * mt * mt * t, 3 * mt * t * t, t * t * t]
-      centre.push([a * s0.x + b * c1[0] + c * c2[0] + e * s1.x, a * s0.y + b * c1[1] + c * c2[1] + e * s1.y])
+    // Along the wood from the parent: up the stem, then out along the twig. Each piece is straight,
+    // with a slight bow to one side or the other: diagonal, never winding.
+    const path = lineage(pieceOf.get(n)!)
+    const stop = path.indexOf(pieceOf.get(from)!)
+    const joints = path.slice(0, stop + 1).reverse()
+    const centre: Point[] = [[pp.x, pp.y]]
+    for (let j = 1; j < joints.length; j++) {
+      const [s0, s1] = [joints[j - 1], joints[j]]
+      const [dx, dy] = [s1.x - s0.x, s1.y - s0.y]
+      const bow = wobble(s1.key, 4) * BOW
+      for (let i = 1; i <= BRANCH_SAMPLES / 2; i++) {
+        const t = i / (BRANCH_SAMPLES / 2)
+        const off = bow * 4 * t * (1 - t)
+        centre.push([s0.x + dx * t - dy * off, s0.y + dy * t + dx * off])
+      }
     }
-    if (lifted) centre.push([p.x, (p.y + s1.y) / 2], [p.x, p.y])
 
     // A branch starts a little wider than the family it carries (never wider than its parent) and ends at that width.
-    const w0 = baseWidth(n)
+    const w0 = thick(baseWidth(n))
     // A branch nobody grows from (no children, or folded away) runs out to a twig under its card
     // instead of ending in a sawn-off stump wider than the card.
     const tip = d.children.length === 0 || collapsed
-    const w1 = tip ? Math.min(branchWidth(n), LEAF_TIP) : branchWidth(n)
+    const w1 = thick(tip ? Math.min(branchWidth(n), LEAF_TIP) : branchWidth(n))
     const pad = w0 / 2
     const xs = centre.map((q) => q[0])
     const ys = centre.map((q) => q[1])
@@ -455,13 +579,8 @@ export function computeLayout(data: TreeNode, index: TreeIndex): TreeLayout {
     })
   }
 
-  // One label per generation of blood members, level with its row, on both sides of the whole crown so
-  // they line up in two columns and every part of the row is near one.
+  // Generations no longer sit in rows; each has its own colour instead (see GEN_COLOURS).
   const rings: TreeLayout['rings'] = []
-  levels.forEach((level, depth) => {
-    const member = level.map((n) => byId.get(n.data.id)).find((node) => node && node.type === 'member' && !node.isRoot)
-    if (member) rings.push({ generation: member.generation, x: bounds.minX - LABEL_GAP, xr: bounds.maxX + LABEL_GAP, y: (rowY[depth] + rowTop[depth]) / 2 })
-  })
 
   return { nodes, links, byId, bounds, crown: crownBlobs(nodes, links, Math.max(top, bounds.maxX - bounds.minX)), rings, trunkScale }
 }
@@ -474,8 +593,12 @@ export function computeLayout(data: TreeNode, index: TreeIndex): TreeLayout {
 function crownBlobs(nodes: LayoutNode[], links: LayoutLink[], outer: number): CrownBlob[] {
   const cell = Math.max(320, outer / 7)
   const bins = new Map<string, { x: number; y: number; n: number }>()
-  const points = nodes.filter((n) => !n.isRoot).map(({ x, y }) => ({ x, y }))
-  for (const { spine } of links) {
+  // Leaves start where the trunk forks: none on the founder's wives or on the limbs up to his sons,
+  // or the canopy hangs down round the trunk to the ground.
+  const byId = new Map(nodes.map((n) => [n.id, n]))
+  const points = nodes.filter((n) => n.generation > 1).map(({ x, y }) => ({ x, y }))
+  for (const { id, spine } of links) {
+    if (byId.get(id)!.generation <= 2) continue
     const [x, y] = spine[spine.length >> 1]
     points.push({ x, y })
   }
@@ -487,5 +610,11 @@ function crownBlobs(nodes: LayoutNode[], links: LayoutLink[], outer: number): Cr
     bin.n++
     bins.set(key, bin)
   }
-  return [...bins.values()].map(({ x, y, n }) => ({ cx: x / n, cy: y / n, r: cell * (0.75 + 0.1 * Math.min(3, n - 1)) }))
+  // …and no blob sags more than half its size below the founder's sons.
+  const sons = nodes.filter((n) => n.generation === 2).map((n) => n.y)
+  const floor = sons.length ? Math.max(...sons) : Infinity
+  return [...bins.values()].map(({ x, y, n }) => {
+    const r = cell * (0.75 + 0.1 * Math.min(3, n - 1))
+    return { cx: x / n, cy: Math.min(y / n, floor - r / 2), r }
+  })
 }

@@ -1,7 +1,7 @@
 import { memo } from 'react'
 import type { Gender, NodeType } from '../model'
 import { yearsLabel } from '../lib/tree'
-import { badgeBox, COUPLE_W, MEMBER_H, MEMBER_W, WIFE_H, WIFE_W } from '../lib/treeLayout'
+import { badgeBox, COUPLE_W, genColour, MEMBER_H, MEMBER_W, WIFE_H, WIFE_W } from '../lib/treeLayout'
 
 interface NodeCardProps {
   id: string
@@ -79,8 +79,7 @@ function GenerationTag({ generation, top }: { generation: number; top: number })
 }
 
 /** Colour of a card's stand-in dot when zoomed far out: the card's own colour, so families still read. */
-const dotColour = (type: NodeType, gender: Gender, isRoot: boolean) =>
-  isRoot ? '#7c2d12' : type === 'wife' ? '#d97706' : gender === 'female' ? '#db2777' : '#2f6b2a'
+const dotColour = (generation: number) => genColour(generation)
 
 /** Only shown far out (see `.tiny` in index.css), where a card is a few pixels and a dot reads better. */
 function CardDot({ fill }: { fill: string }) {
@@ -94,9 +93,9 @@ function NodeCard(props: NodeCardProps) {
   if (type === 'wife') {
     return (
       <g className={selected ? 'node-card is-selected' : 'node-card'} data-node-id={id} transform={`translate(${x},${y})`}>
-        <CardDot fill={dotColour(type, gender, isRoot)} />
+        <CardDot fill={dotColour(generation)} />
         {selected && <rect x={-WW - 6} y={-WH - 6} width={WIFE_W + 12} height={WIFE_H + 12} rx={WH + 6} fill="#fde047" fillOpacity={0.5} stroke="#2563eb" strokeWidth={3} />}
-        <rect x={-WW} y={-WH} width={WIFE_W} height={WIFE_H} rx={WH} fill="url(#cardWife)" stroke="#92400e" strokeWidth={2} />
+        <rect x={-WW} y={-WH} width={WIFE_W} height={WIFE_H} rx={WH} fill="url(#cardWife)" stroke={genColour(generation)} strokeWidth={4} />
         {/* Wedding ring with a small flower on top. */}
         <g transform={`translate(${WW - 17},2)`}>
           <circle r={6} fill="none" stroke="#9a3412" strokeWidth={2} />
@@ -131,10 +130,10 @@ function NodeCard(props: NodeCardProps) {
     const cx = COUPLE_W / 2 - WW
     return (
       <g className={selected ? 'node-card is-selected' : 'node-card'} data-node-id={id} transform={`translate(${x},${y})`}>
-        <CardDot fill={dotColour(type, gender, isRoot)} />
+        <CardDot fill={dotColour(generation)} />
         {selected && <rect x={-COUPLE_W / 2 - 6} y={-WH - 6} width={COUPLE_W + 12} height={WIFE_H + 12} rx={WH + 6} fill="#fde047" fillOpacity={0.5} stroke="#2563eb" strokeWidth={3} />}
         <rect x={-cx - WW} y={-WH} width={WIFE_W} height={WIFE_H} rx={WH} fill="#e0f2fe" stroke="#0369a1" strokeWidth={2} />
-        <rect x={cx - WW} y={-WH} width={WIFE_W} height={WIFE_H} rx={WH} fill="url(#cardFemale)" stroke="#be185d" strokeWidth={2} />
+        <rect x={cx - WW} y={-WH} width={WIFE_W} height={WIFE_H} rx={WH} fill="url(#cardFemale)" stroke={genColour(generation)} strokeWidth={4} />
         {/* Redraw his outline over hers, so the two rings interlock instead of one hiding the other. */}
         <path d={`M${-cx + WW - WH},${-WH} A${WH},${WH} 0 0 1 ${-cx + WW - WH},${WH}`} fill="none" stroke="#0369a1" strokeWidth={2} />
         <text x={cx + 4} y={years ? 1 : 6} textAnchor="middle" fontSize={years ? 16.5 : 18} fontWeight={800} fill="#4a0f2a">
@@ -154,14 +153,14 @@ function NodeCard(props: NodeCardProps) {
     )
   }
 
-  const fill = isRoot ? 'url(#cardFounder)' : female ? 'url(#cardFemale)' : 'url(#cardMale)'
-  const textColor = female && !isRoot ? '#4a0f2a' : '#ffffff'
+  const fill = isRoot ? 'url(#cardFounder)' : genColour(generation)
+  const textColor = '#ffffff'
 
   return (
     <g className={selected ? 'node-card is-selected' : 'node-card'} data-node-id={id} transform={`translate(${x},${y})`}>
-        <CardDot fill={dotColour(type, gender, isRoot)} />
+        <CardDot fill={dotColour(generation)} />
       {selected && <path d={SELECTED_LEAF} fill="#fde047" fillOpacity={0.55} stroke="#2563eb" strokeWidth={3} />}
-      <path d={MEMBER_LEAF} fill={fill} stroke={isRoot ? '#f2c14e' : female ? '#be185d' : '#d9f99d'} strokeWidth={isRoot ? 3 : 2} />
+      <path d={MEMBER_LEAF} fill={fill} stroke={isRoot ? '#f2c14e' : female ? '#f9a8d4' : '#ecfccb'} strokeWidth={isRoot ? 3 : female ? 4 : 2} />
       {/* Leaf vein. */}
       <path d={`M${-MW + 10},${MH - 8} Q0,${MH - 2} ${MW - 10},${-MH + 8}`} fill="none" stroke="#ffffff" strokeOpacity={0.16} strokeWidth={2} />
       <text
@@ -171,8 +170,8 @@ function NodeCard(props: NodeCardProps) {
         fontSize={years ? 19 : 21}
         fontWeight={800}
         fill={textColor}
-        stroke={female && !isRoot ? '#ffffff' : '#0b2410'}
-        strokeOpacity={female && !isRoot ? 0.6 : 0.5}
+        stroke="#000000"
+        strokeOpacity={0.45}
         strokeWidth={3}
         paintOrder="stroke"
         strokeLinejoin="round"
@@ -180,7 +179,7 @@ function NodeCard(props: NodeCardProps) {
         {truncate(name, female ? 12 : 10)}
       </text>
       {years && (
-        <text x={female ? 0 : -10} y={17} textAnchor="middle" fontSize={11} fontWeight={700} fill={female && !isRoot ? '#831843' : '#ecfccb'}>
+        <text x={female ? 0 : -10} y={17} textAnchor="middle" fontSize={11} fontWeight={700} fill="#f5f5f4">
           {years}
         </text>
       )}

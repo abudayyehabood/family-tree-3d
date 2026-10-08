@@ -4,7 +4,7 @@ import { select } from 'd3-selection'
 import { zoom, zoomIdentity } from 'd3-zoom'
 import type { D3ZoomEvent, ZoomBehavior, ZoomTransform } from 'd3-zoom'
 import { Crosshair, Minus, Plus } from 'lucide-react'
-import { cardHalf, hitTest } from '../lib/treeLayout'
+import { cardHalf, genColour, hitTest } from '../lib/treeLayout'
 import type { Box, LayoutLink, LayoutNode, TreeLayout } from '../lib/treeLayout'
 import Branch, { Bark, MIN_SCREEN_WIDTH, WOOD } from './Branch'
 import Foliage from './Foliage'
@@ -29,6 +29,8 @@ const FAR_ZOOM = 0.05
 /** Below this zoom cards are drawn as dots of DOT_PX screen radius (names are then under 4px, unreadable). */
 const DOT_ZOOM = 0.22
 const DOT_PX = 4
+/** …but never wider than this (world units): crowded rows sit about 110 apart, so dots there stay apart. */
+const DOT_MAX = 45
 /** A press that travels further than this (CSS px) was a pan, not a tap. */
 const TAP_SLOP = 10
 /** Screen-px of forgiveness around a card, so cards stay tappable at a zoomed-out fit. */
@@ -277,7 +279,7 @@ export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onR
         viewport.classList.toggle('far', event.transform.k < FAR_ZOOM)
         viewport.classList.toggle('tiny', event.transform.k < DOT_ZOOM)
         // Fixed size on screen, but never so big that neighbours' dots merge into one blot.
-        viewport.style.setProperty('--dot-r', `${Math.min(80, DOT_PX / event.transform.k)}px`)
+        viewport.style.setProperty('--dot-r', `${Math.min(DOT_MAX, DOT_PX / event.transform.k)}px`)
         placeActions(event.transform)
         placeLabels(event.transform)
         setZoomK(event.transform.k)
@@ -558,6 +560,15 @@ export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onR
             </span>
           )),
         )}
+      </div>
+
+      {/* Generations are no longer rows: a colour key says which colour is which. */}
+      <div className="pointer-events-none absolute top-2 left-2 z-10 flex max-w-[60%] flex-wrap gap-1 rounded-lg bg-[#3b2412]/75 p-1.5 shadow" aria-hidden>
+        {[...new Set(layout.nodes.map((n) => n.generation))].sort((a, b) => a - b).map((g) => (
+          <span key={g} className="rounded-full px-2 py-0.5 text-[11px] font-bold text-white sm:text-xs" style={{ background: genColour(g) }}>
+            الجيل {g}
+          </span>
+        ))}
       </div>
 
       {actions && (
