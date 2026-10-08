@@ -1,7 +1,14 @@
 import type { TreeNode } from '../model'
 import { validateTree } from './tree'
 
-const STORAGE_KEY = 'organic_family_tree_v3'
+const MAIN_KEY = 'organic_family_tree_v3'
+/**
+ * The preview build (/family-tree-3d/preview/) shares the live site's origin, so its storage too. It
+ * opens a copy of the live tree but saves to its own key, so trying the preview never changes the
+ * real tree.
+ */
+const PREVIEW = import.meta.env.BASE_URL.endsWith('/preview/')
+const STORAGE_KEY = PREVIEW ? `${MAIN_KEY}_preview` : MAIN_KEY
 /** Keys written by earlier versions; their data is discarded. */
 const LEGACY_KEYS = ['arabic-family-tree:v1']
 
@@ -26,8 +33,8 @@ export async function persistStorage(): Promise<'granted' | 'denied' | 'unsuppor
 
 export function loadTree(): TreeNode | null {
   try {
-    for (const key of LEGACY_KEYS) localStorage.removeItem(key)
-    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!PREVIEW) for (const key of LEGACY_KEYS) localStorage.removeItem(key)
+    const raw = localStorage.getItem(STORAGE_KEY) ?? (PREVIEW ? localStorage.getItem(MAIN_KEY) : null)
     return raw ? validateTree(JSON.parse(raw)) : null
   } catch {
     return null
