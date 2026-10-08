@@ -38,6 +38,14 @@ export function badgeBox(type: NodeType, collapsed: boolean, hiddenCount: number
   return { cx: -hw + (type === 'wife' ? 20 : 24), cy: -hh, hw: w / 2, hh: BADGE_H / 2 }
 }
 
+/** Screen size (px) of the name tags shown over the dots far out. */
+export const NAME_TAG_PX = 13
+
+/** Zoomed out, the fold badge grows so it is never under BADGE_PX tall on screen (up to BADGE_GROW times). */
+const BADGE_PX = 20
+const BADGE_GROW = 3
+export const badgeScale = (k: number) => Math.min(BADGE_GROW, Math.max(1, BADGE_PX / (BADGE_H * k)))
+
 /**
  * What a tap at world point (wx, wy) hits.
  *
@@ -47,9 +55,10 @@ export function badgeBox(type: NodeType, collapsed: boolean, hiddenCount: number
  * collapse badge is ~6px — so taps meant for a card were being stolen by the badge.
  *
  * `pad` (world units) widens the card boxes so small cards stay easy to hit; the badge is never
- * padded, so it only wins on a deliberate hit and the card wins in every ambiguous case.
+ * padded, so it only wins on a deliberate hit and the card wins in every ambiguous case. `grow` is how many
+ * times bigger badges are drawn at this zoom; 0 when they are hidden.
  */
-export function hitTest(nodes: LayoutNode[], wx: number, wy: number, pad: number): { node: LayoutNode; badge: boolean } | null {
+export function hitTest(nodes: LayoutNode[], wx: number, wy: number, pad: number, grow = 1): { node: LayoutNode; badge: boolean } | null {
   let best: LayoutNode | null = null
   let bestDistance = Infinity
   for (const n of nodes) {
@@ -64,12 +73,16 @@ export function hitTest(nodes: LayoutNode[], wx: number, wy: number, pad: number
       best = n
     }
   }
-  if (!best) return null
-  if (best.childCount > 0) {
-    const b = badgeBox(best.type, best.collapsed, best.hiddenCount)
-    if (Math.abs(wx - (best.x + b.cx)) <= b.hw && Math.abs(wy - (best.y + b.cy)) <= b.hh) return { node: best, badge: true }
-  }
-  return { node: best, badge: false }
+  // Zoomed out a badge is drawn `grow` times bigger, growing up and out from its bottom inner corner
+  // (see `.badge-body`), and it may stick out past its card: it is hit where and as big as it is drawn.
+  if (grow > 0)
+    for (const n of nodes) {
+      if (!n.childCount) continue
+      const b = badgeBox(n.type, n.collapsed, n.hiddenCount)
+      const [bx, by] = [n.x + b.cx - (grow - 1) * b.hw, n.y + b.cy - (grow - 1) * b.hh]
+      if (Math.abs(wx - bx) <= b.hw * grow && Math.abs(wy - by) <= b.hh * grow) return { node: n, badge: true }
+    }
+  return best && { node: best, badge: false }
 }
 
 /** Husband → wife: short branch. */

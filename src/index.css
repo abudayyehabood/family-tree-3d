@@ -54,6 +54,24 @@ body {
   r: var(--dot-r, 60px);
 }
 
+/* Fold badges grow as the camera pulls back (--badge-s is set on zoom), so they stay readable and tappable. */
+/* It grows up and out from its bottom inner corner (--bw is its half-width), off the name it sits on. */
+.tree-canvas .badge-body {
+  transform: translate(calc((var(--badge-s, 1) - 1) * var(--bw) * -1px), calc((var(--badge-s, 1) - 1) * var(--bh) * -1px))
+    scale(var(--badge-s, 1));
+}
+
+/* Far out each dot carries its name at a fixed screen size (--inv-k = 1/zoom); only names with room show. */
+.tree-canvas .name-tag {
+  display: none;
+  pointer-events: none;
+  transform: scale(var(--inv-k, 1));
+}
+
+.tiny .node-card.named:not(.is-selected) > .name-tag {
+  display: inline;
+}
+
 /* Zoom bar: drawn by hand, as the browser's own slider is a faint grey line on the dark camera bar. */
 .zoom-bar {
   appearance: none;

@@ -4,7 +4,7 @@ import { select } from 'd3-selection'
 import { zoom, zoomIdentity } from 'd3-zoom'
 import type { D3ZoomEvent, ZoomBehavior, ZoomTransform } from 'd3-zoom'
 import { Crosshair, Minus, Plus } from 'lucide-react'
-import { cardHalf, genColour, hitTest } from '../lib/treeLayout'
+import { badgeScale, cardHalf, genColour, hitTest, NAME_TAG_PX } from '../lib/treeLayout'
 import type { Box, LayoutLink, LayoutNode, TreeLayout } from '../lib/treeLayout'
 import Branch, { Bark, MIN_SCREEN_WIDTH, WOOD } from './Branch'
 import Foliage from './Foliage'
@@ -31,6 +31,56 @@ const DOT_ZOOM = 0.22
 const DOT_PX = 4
 /** …but never wider than this (world units): crowded rows sit about 110 apart, so dots there stay apart. */
 const DOT_MAX = 45
+/** Far out, names are picked again once the zoom has changed by this factor (log). */
+const NAME_REPICK = 0.04
+/** Clear space (px) kept between two name tags. */
+const TAG_GAP = 6
+/** Screen box (px, from the dot's centre) a name tag takes: it sits just above the dot. */
+const TAG_TOP = -NAME_TAG_PX - 9 - TAG_GAP / 2
+const TAG_BOTTOM = -2 + TAG_GAP / 2
+const TAG_CELL = 64
+const tagWidths = new Map<string, number>()
+let tagRuler: CanvasRenderingContext2D | null | undefined
+/** Half a name tag's width on screen (px), measured in the page's own font, plus its halo and gap. */
+function tagHalfWidth(name: string): number {
+  let w = tagWidths.get(name)
+  if (w === undefined) {
+    if (tagRuler === undefined) {
+      tagRuler = document.createElement('canvas').getContext('2d')
+      if (tagRuler) tagRuler.font = `800 ${NAME_TAG_PX}px ${getComputedStyle(document.body).fontFamily}`
+    }
+    const text = name.length > 14 ? `${name.slice(0, 13)}…` : name
+    w = (tagRuler ? tagRuler.measureText(text).width : text.length * NAME_TAG_PX * 0.8) + 4 + TAG_GAP
+    tagWidths.set(name, w)
+  }
+  return w / 2
+}
+
+/**
+ * Which dots get their name far out: as many as fit without one tag covering another. The elders go
+ * first: they are the fewest and hold the tree together.
+ */
+function pickNamed(nodes: LayoutNode[], k: number): Set<string> {
+  const named = new Set<string>()
+  const grid = new Map<string, Array<[number, number, number, number]>>()
+  const cells = (x0: number, x1: number, y0: number, y1: number) => {
+    const out: string[] = []
+    for (let i = Math.floor(x0 / TAG_CELL); i <= Math.floor(x1 / TAG_CELL); i++)
+      for (let j = Math.floor(y0 / TAG_CELL); j <= Math.floor(y1 / TAG_CELL); j++) out.push(`${i},${j}`)
+    return out
+  }
+  for (const n of [...nodes].sort((a, b) => a.generation - b.generation)) {
+    const hw = tagHalfWidth(n.name)
+    const box: [number, number, number, number] = [n.x * k - hw, n.y * k + TAG_TOP, n.x * k + hw, n.y * k + TAG_BOTTOM]
+    const keys = cells(box[0], box[2], box[1], box[3])
+    const clash = keys.some((key) => grid.get(key)?.some((o) => box[0] < o[2] && box[2] > o[0] && box[1] < o[3] && box[3] > o[1]))
+    if (clash) continue
+    named.add(n.id)
+    for (const key of keys) grid.set(key, [...(grid.get(key) ?? []), box])
+  }
+  return named
+}
+
 /** A press that travels further than this (CSS px) was a pan, not a tap. */
 const TAP_SLOP = 10
 /** Screen-px of forgiveness around a card, so cards stay tappable at a zoomed-out fit. */
@@ -123,9 +173,10 @@ const LineageLayer = memo(function LineageLayer({ links, selectedId }: { links: 
 interface NodesLayerProps {
   nodes: LayoutNode[]
   selectedId: string | null
+  named: Set<string>
 }
 
-const NodesLayer = memo(function NodesLayer({ nodes, selectedId }: NodesLayerProps) {
+const NodesLayer = memo(function NodesLayer({ nodes, selectedId, named }: NodesLayerProps) {
   return (
     <g className="nodes-layer">
       {nodes.map((n) => (
@@ -146,6 +197,7 @@ const NodesLayer = memo(function NodesLayer({ nodes, selectedId }: NodesLayerPro
           childCount={n.childCount}
           hiddenCount={n.hiddenCount}
           selected={n.id === selectedId}
+          named={named.has(n.id)}
         />
       ))}
     </g>
@@ -171,6 +223,11 @@ export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onR
   const lastCullRef = useRef(0)
   const actionsRef = useRef<HTMLDivElement>(null)
   const selectedRef = useRef(selectedId)
+  /** Dots whose name shows far out, and the zoom they were picked at. */
+  const [named, setNamed] = useState<Set<string>>(() => new Set())
+  const namedKRef = useRef(0)
+  /** A card whose fold was just tapped, and where it sat on screen: the camera keeps it there. */
+  const anchorRef = useRef<{ id: string; sx: number; sy: number } | null>(null)
   /** True while the camera is still the automatic whole-tree fit; cleared once the user pans or zooms. */
   const autoFitRef = useRef(true)
 
@@ -247,12 +304,33 @@ export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onR
     [layout.links, viewBox],
   )
 
+  const refreshNames = useCallback((k: number, force = false) => {
+    if (k >= DOT_ZOOM) return
+    if (!force && Math.abs(Math.log(k / namedKRef.current)) < NAME_REPICK) return
+    namedKRef.current = k
+    setNamed(pickNamed(layoutRef.current.nodes, k))
+  }, [])
+
+  // Folding or opening a branch re-grows the whole crown, so every card moves. Keep the one that was
+  // tapped where it was on screen, or the person loses their place.
+  useLayoutEffect(() => {
+    const anchor = anchorRef.current
+    anchorRef.current = null
+    const node = anchor && layout.byId.get(anchor.id)
+    const svg = svgRef.current
+    const behavior = zoomRef.current
+    if (!anchor || !node || !svg || !behavior) return
+    const { k } = transformRef.current
+    behavior.transform(select(svg), zoomIdentity.translate(anchor.sx - node.x * k, anchor.sy - node.y * k).scale(k))
+  }, [layout])
+
   useLayoutEffect(() => {
     layoutRef.current = layout
+    refreshNames(transformRef.current.k, true)
     selectedRef.current = selectedId
     placeActions(transformRef.current)
     placeLabels(transformRef.current)
-  }, [layout, selectedId, actions, placeActions, placeLabels])
+  }, [layout, selectedId, actions, placeActions, placeLabels, refreshNames])
 
   const cancelAnimation = useCallback(() => {
     if (animationRef.current) cancelAnimationFrame(animationRef.current)
@@ -280,6 +358,9 @@ export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onR
         viewport.classList.toggle('tiny', event.transform.k < DOT_ZOOM)
         // Fixed size on screen, but never so big that neighbours' dots merge into one blot.
         viewport.style.setProperty('--dot-r', `${Math.min(DOT_MAX, DOT_PX / event.transform.k)}px`)
+        viewport.style.setProperty('--inv-k', String(1 / event.transform.k))
+        viewport.style.setProperty('--badge-s', String(badgeScale(event.transform.k)))
+        refreshNames(event.transform.k)
         placeActions(event.transform)
         placeLabels(event.transform)
         setZoomK(event.transform.k)
@@ -294,7 +375,7 @@ export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onR
       selection.on('.zoom', null)
       zoomRef.current = null
     }
-  }, [cancelAnimation, updateViewBox, placeActions, placeLabels])
+  }, [cancelAnimation, updateViewBox, placeActions, placeLabels, refreshNames])
 
   /** Moves the camera so world point (cx, cy) sits at the viewport centre with scale k. */
   const moveCamera = useCallback(
@@ -417,10 +498,13 @@ export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onR
       const t = transformRef.current
       const wx = (clientX - box.left - t.x) / t.k
       const wy = (clientY - box.top - t.y) / t.k
-      const hit = hitTest(layoutRef.current.nodes, wx, wy, TAP_PAD / t.k)
+      const hit = hitTest(layoutRef.current.nodes, wx, wy, TAP_PAD / t.k, t.k < DOT_ZOOM ? 0 : badgeScale(t.k))
       if (!hit) onSelect(null)
-      else if (hit.badge) onToggle(hit.node.id)
-      else onSelect(hit.node.id)
+      else if (hit.badge) {
+        anchorRef.current = { id: hit.node.id, sx: t.x + hit.node.x * t.k, sy: t.y + hit.node.y * t.k }
+        autoFitRef.current = false
+        onToggle(hit.node.id)
+      } else onSelect(hit.node.id)
     },
     [onSelect, onToggle],
   )
@@ -543,7 +627,7 @@ export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onR
           <Trunk scale={layout.trunkScale} extra={trunkExtra(layout)} />
           <BranchesLayer links={visibleLinks} />
           <LineageLayer links={layout.links} selectedId={selectedId} />
-          <NodesLayer nodes={visibleNodes} selectedId={selectedId} />
+          <NodesLayer nodes={visibleNodes} selectedId={selectedId} named={named} />
         </g>
       </svg>
 

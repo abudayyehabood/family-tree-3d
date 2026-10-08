@@ -1,7 +1,8 @@
 import { memo } from 'react'
+import type { CSSProperties } from 'react'
 import type { Gender, NodeType } from '../model'
 import { yearsLabel } from '../lib/tree'
-import { badgeBox, COUPLE_W, genColour, MEMBER_H, MEMBER_W, WIFE_H, WIFE_W } from '../lib/treeLayout'
+import { badgeBox, COUPLE_W, genColour, MEMBER_H, MEMBER_W, NAME_TAG_PX, WIFE_H, WIFE_W } from '../lib/treeLayout'
 
 interface NodeCardProps {
   id: string
@@ -19,6 +20,8 @@ interface NodeCardProps {
   childCount: number
   hiddenCount: number
   selected: boolean
+  /** Far out, where cards are dots: this one's name tag has room to show. */
+  named: boolean
 }
 
 function truncate(text: string, max: number): string {
@@ -49,19 +52,22 @@ function ToggleBadge({ type, collapsed, hiddenCount }: { type: NodeType; collaps
   return (
     <g className="toggle-btn" data-toggle="1" transform={`translate(${cx},${cy})`}>
       <title>{collapsed ? `فتح الفرع (${hiddenCount} مخفي)` : 'طي الفرع'}</title>
-      <rect
-        x={-hw}
-        y={-hh}
-        width={hw * 2}
-        height={hh * 2}
-        rx={hh}
-        fill={collapsed ? '#d97706' : '#fef3c7'}
-        stroke={collapsed ? '#fff7e6' : '#92400e'}
-        strokeWidth={2}
-      />
-      <text textAnchor="middle" y={collapsed ? 4.5 : 6} fontSize={collapsed ? 12.5 : 18} fontWeight={800} fill={collapsed ? '#fff' : '#78350f'} direction="ltr">
-        {label}
-      </text>
+      {/* Grows as the camera pulls back (--badge-s, set on zoom) so it stays big enough to read and tap. */}
+      <g className="badge-body" style={{ '--bw': hw, '--bh': hh } as CSSProperties}>
+        <rect
+          x={-hw}
+          y={-hh}
+          width={hw * 2}
+          height={hh * 2}
+          rx={hh}
+          fill={collapsed ? '#d97706' : '#fef3c7'}
+          stroke={collapsed ? '#fff7e6' : '#92400e'}
+          strokeWidth={2}
+        />
+        <text textAnchor="middle" y={collapsed ? 4.5 : 6} fontSize={collapsed ? 12.5 : 18} fontWeight={800} fill={collapsed ? '#fff' : '#78350f'} direction="ltr">
+          {label}
+        </text>
+      </g>
     </g>
   )
 }
@@ -82,18 +88,31 @@ function GenerationTag({ generation, top }: { generation: number; top: number })
 const dotColour = (generation: number) => genColour(generation)
 
 /** Only shown far out (see `.tiny` in index.css), where a card is a few pixels and a dot reads better. */
+/** The name over a card's dot when zoomed far out, at a fixed size on screen (--inv-k, set on zoom). */
+function NameTag({ name }: { name: string }) {
+  return (
+    <g className="name-tag">
+      <text y={-7} textAnchor="middle" fontSize={NAME_TAG_PX} fontWeight={800} fill="#1c1917" stroke="#fffbeb" strokeWidth={3.5} paintOrder="stroke" strokeLinejoin="round">
+        {truncate(name, 14)}
+      </text>
+    </g>
+  )
+}
+
 function CardDot({ fill }: { fill: string }) {
   return <circle className="card-dot" r={70} fill={fill} stroke="#fff" strokeOpacity={0.8} strokeWidth={1} vectorEffect="non-scaling-stroke" />
 }
 
 function NodeCard(props: NodeCardProps) {
-  const { id, type, gender, name, generation, born, died, husband, x, y, isRoot, collapsed, childCount, hiddenCount, selected } = props
+  const { id, type, gender, name, generation, born, died, husband, x, y, isRoot, collapsed, childCount, hiddenCount, selected, named } = props
+  const cls = `node-card${selected ? ' is-selected' : ''}${named ? ' named' : ''}`
   const years = yearsLabel(born, died)
 
   if (type === 'wife') {
     return (
-      <g className={selected ? 'node-card is-selected' : 'node-card'} data-node-id={id} transform={`translate(${x},${y})`}>
+      <g className={cls} data-node-id={id} transform={`translate(${x},${y})`}>
         <CardDot fill={dotColour(generation)} />
+        <NameTag name={name} />
         {selected && <rect x={-WW - 6} y={-WH - 6} width={WIFE_W + 12} height={WIFE_H + 12} rx={WH + 6} fill="#fde047" fillOpacity={0.5} stroke="#2563eb" strokeWidth={3} />}
         <rect x={-WW} y={-WH} width={WIFE_W} height={WIFE_H} rx={WH} fill="url(#cardWife)" stroke={genColour(generation)} strokeWidth={4} />
         {/* Wedding ring with a small flower on top. */}
@@ -129,8 +148,9 @@ function NodeCard(props: NodeCardProps) {
     // A married daughter and her husband: two wife-sized pills locked together like ∞ (hers on the right).
     const cx = COUPLE_W / 2 - WW
     return (
-      <g className={selected ? 'node-card is-selected' : 'node-card'} data-node-id={id} transform={`translate(${x},${y})`}>
+      <g className={cls} data-node-id={id} transform={`translate(${x},${y})`}>
         <CardDot fill={dotColour(generation)} />
+        <NameTag name={name} />
         {selected && <rect x={-COUPLE_W / 2 - 6} y={-WH - 6} width={COUPLE_W + 12} height={WIFE_H + 12} rx={WH + 6} fill="#fde047" fillOpacity={0.5} stroke="#2563eb" strokeWidth={3} />}
         <rect x={-cx - WW} y={-WH} width={WIFE_W} height={WIFE_H} rx={WH} fill="#e0f2fe" stroke="#0369a1" strokeWidth={2} />
         <rect x={cx - WW} y={-WH} width={WIFE_W} height={WIFE_H} rx={WH} fill="url(#cardFemale)" stroke={genColour(generation)} strokeWidth={4} />
@@ -157,8 +177,9 @@ function NodeCard(props: NodeCardProps) {
   const textColor = '#ffffff'
 
   return (
-    <g className={selected ? 'node-card is-selected' : 'node-card'} data-node-id={id} transform={`translate(${x},${y})`}>
+    <g className={cls} data-node-id={id} transform={`translate(${x},${y})`}>
         <CardDot fill={dotColour(generation)} />
+        <NameTag name={name} />
       {selected && <path d={SELECTED_LEAF} fill="#fde047" fillOpacity={0.55} stroke="#2563eb" strokeWidth={3} />}
       <path d={MEMBER_LEAF} fill={fill} stroke={isRoot ? '#f2c14e' : female ? '#f9a8d4' : '#ecfccb'} strokeWidth={isRoot ? 3 : female ? 4 : 2} />
       {/* Leaf vein. */}
