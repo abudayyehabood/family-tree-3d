@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode, Ref } from 'react'
+import type { CSSProperties, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode, Ref } from 'react'
 import { select } from 'd3-selection'
 import { zoom, zoomIdentity } from 'd3-zoom'
 import type { D3ZoomEvent, ZoomBehavior, ZoomTransform } from 'd3-zoom'
@@ -15,6 +15,10 @@ import Trunk, { TRUNK_DEPTH } from './Trunk'
 const MIN_SCALE = 0.005
 const MAX_SCALE = 3
 const ZOOM_STEP = 1.35
+const SLIDER_STEPS = 1000
+const LOG_SPAN = Math.log(MAX_SCALE / MIN_SCALE)
+const scaleToSlider = (k: number) => (Math.log(k / MIN_SCALE) / LOG_SPAN) * SLIDER_STEPS
+const sliderToScale = (v: number) => MIN_SCALE * Math.exp((v / SLIDER_STEPS) * LOG_SPAN)
 /** Only elements within the viewport plus this many screen-widths of margin are mounted. */
 const CULL_MARGIN = 1
 const CULL_INTERVAL_MS = 120
@@ -159,7 +163,7 @@ export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onR
   const transformRef = useRef<ZoomTransform>(zoomIdentity)
   const animationRef = useRef(0)
   const layoutRef = useRef(layout)
-  const [zoomPercent, setZoomPercent] = useState(100)
+  const [zoomK, setZoomK] = useState(1)
   const [inlineEdit, setInlineEdit] = useState<InlineEdit | null>(null)
   const [viewBox, setViewBox] = useState<Box | null>(null)
   const lastCullRef = useRef(0)
@@ -276,7 +280,7 @@ export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onR
         viewport.style.setProperty('--dot-r', `${Math.min(80, DOT_PX / event.transform.k)}px`)
         placeActions(event.transform)
         placeLabels(event.transform)
-        setZoomPercent(Math.round(event.transform.k * 100))
+        setZoomK(event.transform.k)
         if (performance.now() - lastCullRef.current > CULL_INTERVAL_MS) updateViewBox(event.transform)
       })
       .on('end', (event: D3ZoomEvent<SVGSVGElement, unknown>) => updateViewBox(event.transform))
@@ -382,14 +386,16 @@ export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onR
     }
   }, [centerTree, moveCamera, updateViewBox])
 
-  const zoomBy = (factor: number) => {
+  /** Zooms to scale k round the viewport centre: animated for the buttons, instant while the slider drags. */
+  const zoomTo = (k: number, animate: boolean) => {
     const svg = svgRef.current
     if (!svg) return
     const t = transformRef.current
     const cx = (svg.clientWidth / 2 - t.x) / t.k
     const cy = (svg.clientHeight / 2 - t.y) / t.k
-    moveCamera(cx, cy, t.k * factor, true, 280)
+    moveCamera(cx, cy, k, animate, 280)
   }
+  const zoomBy = (factor: number) => zoomTo(transformRef.current.k * factor, true)
 
   /**
    * Taps are handled here, from raw coordinates, for two reasons that both broke iPhone:
@@ -603,9 +609,19 @@ export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onR
         >
           <Plus className="size-3 sm:size-6" strokeWidth={3} />
         </button>
-        <span className="w-7 text-center text-[10px] font-bold text-amber-50 tabular-nums sm:w-14 sm:text-sm" dir="ltr">
-          {zoomPercent}%
-        </span>
+        {/* Zoom bar on a log scale, so 1% to 300% each get room; left is far, right (by the + button) is near. */}
+        <input
+          type="range"
+          dir="ltr"
+          min={0}
+          max={SLIDER_STEPS}
+          value={Math.round(scaleToSlider(zoomK))}
+          onChange={(e) => zoomTo(sliderToScale(Number(e.target.value)), false)}
+          aria-label="شريط التكبير"
+          title="شريط التكبير"
+          style={{ "--fill": `${scaleToSlider(zoomK) / SLIDER_STEPS * 100}%` } as CSSProperties}
+          className="zoom-bar h-6 w-20 shrink-0 px-1 sm:h-11 sm:w-44"
+        />
         <button
           type="button"
           aria-label="تصغير"
@@ -615,6 +631,9 @@ export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onR
         >
           <Minus className="size-3 sm:size-6" strokeWidth={3} />
         </button>
+        <span className="w-7 text-center text-[10px] font-bold text-amber-50 tabular-nums sm:w-14 sm:text-sm" dir="ltr">
+          {zoomK < 0.1 ? (zoomK * 100).toFixed(1) : Math.round(zoomK * 100)}%
+        </span>
       </div>
     </div>
   )
