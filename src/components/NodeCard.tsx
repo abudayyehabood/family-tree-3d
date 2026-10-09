@@ -110,7 +110,7 @@ function NodeCard(props: NodeCardProps) {
 
   if (type === 'wife') {
     return (
-      <g className={cls} data-node-id={id} transform={`translate(${x},${y})`}>
+      <g className={cls} data-node-id={id} data-gen={generation} transform={`translate(${x},${y})`}>
         <CardDot fill={dotColour(generation)} />
         <NameTag name={name} />
         {selected && <rect x={-WW - 6} y={-WH - 6} width={WIFE_W + 12} height={WIFE_H + 12} rx={WH + 6} fill="#fde047" fillOpacity={0.5} stroke="#2563eb" strokeWidth={3} />}
@@ -148,7 +148,7 @@ function NodeCard(props: NodeCardProps) {
     // A married daughter and her husband: two wife-sized pills locked together like ∞ (hers on the right).
     const cx = COUPLE_W / 2 - WW
     return (
-      <g className={cls} data-node-id={id} transform={`translate(${x},${y})`}>
+      <g className={cls} data-node-id={id} data-gen={generation} transform={`translate(${x},${y})`}>
         <CardDot fill={dotColour(generation)} />
         <NameTag name={name} />
         {selected && <rect x={-COUPLE_W / 2 - 6} y={-WH - 6} width={COUPLE_W + 12} height={WIFE_H + 12} rx={WH + 6} fill="#fde047" fillOpacity={0.5} stroke="#2563eb" strokeWidth={3} />}
@@ -177,7 +177,7 @@ function NodeCard(props: NodeCardProps) {
   const textColor = '#ffffff'
 
   return (
-    <g className={cls} data-node-id={id} transform={`translate(${x},${y})`}>
+    <g className={cls} data-node-id={id} data-gen={generation} transform={`translate(${x},${y})`}>
         <CardDot fill={dotColour(generation)} />
         <NameTag name={name} />
       {selected && <path d={SELECTED_LEAF} fill="#fde047" fillOpacity={0.55} stroke="#2563eb" strokeWidth={3} />}

@@ -225,6 +225,8 @@ export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onR
   const selectedRef = useRef(selectedId)
   /** Dots whose name shows far out, and the zoom they were picked at. */
   const [named, setNamed] = useState<Set<string>>(() => new Set())
+  /** A generation picked on the colour key: every other card fades, so it is plain which cards it is. */
+  const [focusGen, setFocusGen] = useState<number | null>(null)
   const namedKRef = useRef(0)
   /** A card whose fold was just tapped, and where it sat on screen: the camera keeps it there. */
   const anchorRef = useRef<{ id: string; sx: number; sy: number } | null>(null)
@@ -646,12 +648,20 @@ export default function TreeCanvas({ layout, selectedId, onSelect, onToggle, onR
         )}
       </div>
 
-      {/* Generations are no longer rows: a colour key says which colour is which. */}
-      <div className="pointer-events-none absolute top-2 left-2 z-10 flex max-w-[60%] flex-wrap gap-1 rounded-lg bg-[#3b2412]/75 p-1.5 shadow" aria-hidden>
+      {/* Generations are no longer rows: a colour key says which colour is which. Tap one to light up just that generation. */}
+      {focusGen !== null && <style>{`.tree-canvas .node-card:not([data-gen="${focusGen}"]) { opacity: 0.12; }`}</style>}
+      <div className="absolute top-2 left-2 z-10 flex max-w-[60%] flex-wrap gap-1 rounded-lg bg-[#3b2412]/75 p-1.5 shadow">
         {[...new Set(layout.nodes.map((n) => n.generation))].sort((a, b) => a - b).map((g) => (
-          <span key={g} className="rounded-full px-2 py-0.5 text-[11px] font-bold text-white sm:text-xs" style={{ background: genColour(g) }}>
+          <button
+            key={g}
+            type="button"
+            aria-pressed={focusGen === g}
+            onClick={() => setFocusGen(focusGen === g ? null : g)}
+            className={`rounded-full px-2 py-0.5 text-[11px] font-bold text-white transition-opacity sm:text-xs ${focusGen === g ? 'ring-2 ring-white' : focusGen !== null ? 'opacity-40' : ''}`}
+            style={{ background: genColour(g) }}
+          >
             الجيل {g}
-          </span>
+          </button>
         ))}
       </div>
 

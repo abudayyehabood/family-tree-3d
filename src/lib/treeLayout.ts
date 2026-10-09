@@ -15,8 +15,11 @@ export const WIFE_H = 44
 export const COUPLE_OVERLAP = 14
 export const COUPLE_W = 2 * WIFE_W - COUPLE_OVERLAP
 
-/** One colour per generation (the founder's is 1), so a generation reads at a glance without rows. */
-export const GEN_COLOURS = ['#7c2d12', '#15803d', '#0369a1', '#7e22ce', '#b45309', '#be123c', '#0f766e', '#4338ca', '#a16207', '#c2410c', '#1d4ed8', '#9d174d', '#3f6212', '#6d28d9', '#0e7490', '#854d0e']
+/**
+ * One colour per generation (the founder's is 1). Neighbouring generations jump far round the colour
+ * wheel (red, teal, magenta, lime...), so a parent and child, or two cousins a generation apart, never look alike.
+ */
+export const GEN_COLOURS = ['#78350f', '#dc2626', '#0d9488', '#c026d3', '#65a30d', '#4338ca', '#ea580c', '#0284c7', '#db2777', '#15803d', '#7e22ce', '#ca8a04', '#1d4ed8', '#334155', '#be123c', '#0f766e']
 export const genColour = (generation: number) => GEN_COLOURS[(generation - 1) % GEN_COLOURS.length]
 
 /** Collapse badge: 22 world units tall, anchored on the card's top leading corner. */
